@@ -42,10 +42,29 @@ check("funnel last stage is shipped", (await page.locator("#sfun .fbar i").last(
 check("ship rate has judged and unjudged models", (await page.locator("#stb tr").evaluateAll((rs) => rs.map((r) => r.children[9].innerText))).some((v) => v.endsWith("%"))
   && (await page.locator("#stb tr").evaluateAll((rs) => rs.map((r) => r.children[9].innerText))).some((v) => v === "—"));
 
-// controls
-const before = await count("#cchart circle[data-s]:not([pointer-events])");
-await click("#cmin"); check("hide under 5 commits", (await count("#cchart circle[data-s]:not([pointer-events])")) < before); await click("#cmin");
-await click('#cwin [data-w="30"]'); check("30-day window", (await page.locator("#csum").innerText()).includes("last 30 days")); await click('#cwin [data-w="0"]');
+// global filters: window, session role, hide-small — every card must follow
+const snap = async () => ({
+  total: await page.locator("#k_total").innerText(), badge: await page.locator("#k_badge").innerText(),
+  months: await count("#mchart rect[data-s]"), daily: await count("#hchart rect[data-s]"), models: await count("#dchart rect[data-s]"),
+  prod: await count("#pchart circle"), ship: await count("#schart circle"), commits: await count("#cchart circle[data-s]:not([pointer-events])"),
+  who: await count("#uchart rect"), tokens: await count("#tcal .cell:visible"), rows: await count("#tb tr"), csum: await page.locator("#csum").innerText(),
+});
+const all = await snap();
+await click('#gwin [data-w="30"]'); const w30 = await snap();
+check("30-day window changes KPIs", w30.total !== all.total && w30.badge !== all.badge);
+check("30-day window moves every card", w30.months < all.months && w30.daily < all.daily && w30.models < all.models && w30.tokens < all.tokens && w30.commits <= all.commits && w30.csum.includes("last 30 days"));
+check("filter chip and reset shown", (await page.locator("#gchip").innerText()).includes("last 30 days") && (await page.locator("#greset").isVisible()));
+await click('#grole [data-r="plan"]'); const plan = await snap();
+check("plan-only scope changes hours and models", plan.total !== w30.total && plan.models !== w30.models);
+check("local build toggle hidden under a global role", await page.locator("#pscope").isHidden());
+await click("#greset"); const back = await snap();
+check("reset restores everything", back.total === all.total && back.months === all.months && back.commits === all.commits && (await page.locator("#greset").isHidden()));
+await click("#gsmall"); const small = await snap();
+check("hide small entries", small.commits < all.commits && small.rows <= all.rows && (await page.locator("#gchip").innerText()).includes("small entries hidden")); await click("#gsmall");
+await click("#mrole"); check("monthly hours stacked by role", (await page.locator("#mleg .lg").allInnerTexts()).join(" ").includes("build")); await click("#mrole");
+check("no console errors after global filters", errors.length === 0, errors.join(" | ").slice(0, 300));
+
+// local controls
 await click("#crole [data-r=combo]"); check("planner→builder combos", (await count("#cchart circle[pointer-events=none]")) > 0); await click("#crole [data-r=off]");
 await click("#dgroup [data-g=provider]"); check("models grouped by provider", (await count("#dleg .lg")) < 12); await click("#dgroup [data-g=model]");
 await click("#pmetric [data-y=epd]"); check("edits per dollar view", (await page.locator("#psum").innerText()).includes("zero-cost")); await click("#pmetric [data-y=eph]");

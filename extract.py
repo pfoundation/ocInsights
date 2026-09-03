@@ -518,9 +518,9 @@ def main():
                      idx("lmodel", model_label(m["model"])), round((s["ms"] if s else 0) / 3.6e6, 3), s["u"] if s else 0, s["a"] if s else 0, s["err"] if s else 0,
                      round(m["cost"], 4), m["fresh"], m["cache_r"], m["cache_w"], s["edits"] if s else 0, s["eerr"] if s else 0, len(s["files"]) if s else 0,
                      s["reads"] if s else 0, s["bash"] if s else 0, s["tools"] if s else 0, s["terr"] if s else 0, s["ver"] if s else 0, s["commit"] if s else 0,
-                     lines, s["comp"] if s else 0, sh, lag, paths])
+                     lines, s["comp"] if s else 0, sh, lag, paths, m["add"], m["dele"]])
     SESS_COLS = ["day", "wt", "agent", "role", "child", "model", "prov", "lmodel", "hrs", "u", "a", "err", "cost", "fresh", "cacheR", "cacheW",
-                 "edits", "eerr", "files", "reads", "bash", "tools", "terr", "ver", "commit", "lines", "comp", "shipped", "lag", "paths"]
+                 "edits", "eerr", "files", "reads", "bash", "tools", "terr", "ver", "commit", "lines", "comp", "shipped", "lag", "paths", "add", "dele"]
     DAYW = {d: {w: [round(v[0] / 3.6e6, 3), round(v[1] / 3.6e6, 3), round(v[2] / 3.6e6, 3)] for w, v in per.items()} for d, per in X["day_wt_role"].items()}
     DAYM = {d: dict(per) for d, per in X["models_day_role"].items()}
     DAYU = dict(X["day_u"])
