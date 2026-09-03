@@ -12,7 +12,7 @@ Read `README.md` first — it holds the metric definitions. This file is about w
 make                 # extract + build + verify (~20 s)
 make extract         # python3 extract.py --out data.json      (read-only DB pass + git log)
 make build           # python3 build.py                        (data.json + template.html -> deck)
-make verify          # node verify.mjs opencode_time_full.html (headless Chromium, 24 checks)
+make verify          # node verify.mjs opencode_time_full.html (headless Chromium, 43 checks)
 make publish         # ./publish.sh                            (gh gist edit; prints rendered URL)
 make template        # tools/make_template.py — only after hand-editing a built deck
 make install-plugin  # symlink plugin/editLedger.ts into ~/.config/opencode/plugin/ (restart opencode)
@@ -68,6 +68,7 @@ Render-time derivation (`derive()` in the template) turns those into the per-car
 - **`session_v2.agent` is the LAST agent.** 595 of the 601 plan→build sessions carry `build`. Take roles from each assistant message's `agent` field (`AGENT_RE`), never from the session column, or plan time collapses from 293 h to 107 h. User messages take the phase in progress.
 - **Session day.** A session belongs to the day of its first message for windowing; hours are still credited to the exact message day (`DAYW`). The two agree to within rounding over any window longer than a day.
 - **Template literals:** `prefix + cond ? a : b` parses as `(prefix + cond) ? a : b`. Parenthesise ternaries when concatenating (it broke a summary line once).
+- **Loading overlay.** `#loading` is static markup (paints before any JS) and is removed by `boot()` after the first `renderAll()`. The boot is deferred with `requestAnimationFrame` + `setTimeout(0)` (300 ms fallback for hidden tabs) because htmlpreview evaluates the script inside a microtask right after `document.write`, so a synchronous first render would never let the loader paint. It only covers parse + render (~0.1–0.5 s locally); the download phase on htmlpreview is a blank page we cannot touch. `window.onerror` writes the message into `.lmsg` instead of leaving it spinning; `verify.mjs` waits for the element to detach.
 
 ## Publishing
 

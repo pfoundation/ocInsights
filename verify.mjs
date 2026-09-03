@@ -11,8 +11,12 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+const staticHtml = (await import("node:fs")).readFileSync(file, "utf8");
 await page.goto("file://" + file);
-await page.waitForTimeout(700);
+// the loader is removed by boot() after the first renderAll; waiting on it replaces a fixed sleep
+let loaderGone = true;
+await page.locator("#loading").waitFor({ state: "detached", timeout: 5000 }).catch(() => { loaderGone = false; });
+await page.waitForTimeout(100);
 
 const checks = [];
 const check = (name, ok, detail = "") => { checks.push({ name, ok: !!ok, detail }); };
@@ -20,6 +24,8 @@ const count = (sel) => page.locator(sel).count();
 const click = async (sel) => { await page.locator(sel).first().click(); await page.waitForTimeout(150); };
 
 check("no console errors", errors.length === 0, errors.join(" | ").slice(0, 300));
+check("loader in static markup", /<div id="loading"[^>]*>[\s\S]*?Loading [\d,]+ sessions/.test(staticHtml));
+check("loader dismissed after first render", loaderGone);
 check("no unfilled placeholders", !(await page.content()).includes("@@"));
 check("kpi cards", (await count(".kpi")) === 6, `${await count(".kpi")} found`);
 check("monthly hours: 24 project series", (await count("#mleg .lg")) >= 20);

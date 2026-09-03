@@ -48,6 +48,7 @@ def main():
         busiest_day=m["busiest_day"], busiest_hr=f"{m['busiest_hr']:.2f}", busiest_msgs=f"{m['busiest_msgs']:,}",
         busiest_month=month_name(m["busiest_day"][:7]), peak_month_name=month_name(m["peak_month"]), peak_month_hr=f"{m['peak_month_hr']:.1f}",
         repos=str(m["repos"]), ship_days=str(m.get("ship_days", 7)),
+        sessions=f"{m['sessions']:,}",
     )
     for k, v in kpi.items():
         h = h.replace(f"@@{k}@@", v)
