@@ -136,23 +136,40 @@ def part_edits(cur, meta):
 
 
 def ledger_edits(meta):
-    """Edit paths from our own append-only ledger (plugin/editLedger.ts). Returns session -> [(ts_s, relpath)]."""
+    """Edit paths from our own append-only ledger (plugin/editLedger.ts).
+
+    Returns (session -> [(ts_s, relpath)], info). opencode instantiates a plugin once per
+    location, so the same tool call can be appended more than once; lines are deduped on the
+    tool call id (`call`), falling back to (session, ts, file) for lines written before it existed.
+    `info` counts every well-formed line, including sessions outside the scanned projects.
+    """
     out = defaultdict(list)
+    info = dict(lines=0, first=None, last=None, sessions=0)
     if not os.path.exists(LEDGER_PATH):
-        return out
+        return out, info
+    seen, sess = set(), set()
     with open(LEDGER_PATH) as fh:
         for line in fh:
             try:
                 e = json.loads(line)
             except Exception:
                 continue
+            key = (e.get("call"), e.get("file")) if e.get("call") else (e.get("session"), e.get("ts"), e.get("file"))
+            if key in seen:
+                continue
+            seen.add(key)
+            info["lines"] += 1
+            info["first"] = min(info["first"] or e["ts"], e["ts"])
+            info["last"] = max(info["last"] or 0, e["ts"])
+            sess.add(e.get("session"))
             m = meta.get(e.get("session"))
             if not m:
                 continue
             f = rel_file(e.get("file"), e.get("dir") or m["dir"])
             if f:
                 out[e["session"]].append((e["ts"] / 1000, f))
-    return out
+    info["sessions"] = len(sess)
+    return out, info
 
 
 def scan_messages(cur, meta, win_start_ms):
@@ -171,6 +188,8 @@ def scan_messages(cur, meta, win_start_ms):
     ua_wt = defaultdict(lambda: [0, 0, 0])
     ua_month = defaultdict(lambda: [0, 0, 0])
     depth = {}                            # worktree -> [first, last, compactions]
+    month_edits = defaultdict(lambda: [0, 0])  # month -> [edit tool calls, of which with a path in the message JSON]
+    last_edit_ms = 0                      # newest edit tool call seen, to judge whether the ledger is keeping up
     n_msgs = 0
     cur.execute("SELECT session_id, type, data, time_created FROM session_message WHERE type IN ('user','assistant','compaction') ORDER BY session_id, time_created")
     for sid, typ, data, tc in cur:
@@ -261,7 +280,10 @@ def scan_messages(cur, meta, win_start_ms):
                     s["eerr"] += 1
                     ph["eerr"] += 1
                 f = st.get("title") or (st.get("input") or {}).get("filePath") or (st.get("input") or {}).get("path")
+                month_edits[month][0] += 1
+                last_edit_ms = max(last_edit_ms, tc)
                 if f:
+                    month_edits[month][1] += 1
                     s["files"].add(f)
                     ph["files"].add(f)
                     rf = rel_file(f, m["dir"])
@@ -280,7 +302,8 @@ def scan_messages(cur, meta, win_start_ms):
                 if COMMIT_RE.search(c):
                     s["commit"] += 1
                     ph["commit"] += 1
-    return S, day_wt_ms, day_sess, rhythm, models_day, ua_wt, ua_month, depth, n_msgs, dict(day_wt_role=day_wt_role, rhythm_day=rhythm_day, day_u=day_u, models_day_role=models_day_role)
+    return S, day_wt_ms, day_sess, rhythm, models_day, ua_wt, ua_month, depth, n_msgs, dict(day_wt_role=day_wt_role, rhythm_day=rhythm_day, day_u=day_u, models_day_role=models_day_role,
+                                                                                          month_edits=month_edits, last_edit_ms=last_edit_ms)
 
 
 # --------------------------------------------------------------- commits ---
@@ -487,14 +510,25 @@ def main():
             e = acc[day]; e[0] += m["fresh"] * ms / tot; e[1] += m["cost"] * ms / tot; e[2].add(sid)
     DTOK = {d: [round(v[0]), round(v[1], 2), len(v[2])] for d, v in acc.items()}
 
-    # edit paths from all three sources: message JSON (Jan–Aug), legacy part table (Feb–Aug), our ledger (Sep onward)
+    # edit paths from all three sources: message JSON, the legacy part table (Feb–Aug), our ledger (Sep onward).
+    # The message JSON is the primary source and still carries paths; the ledger is insurance against it stopping again.
     edits = defaultdict(set)
     for sid, s in S.items():
         edits[sid].update(s["edit_ev"])
-    for src in (part_edits(cur, meta), ledger_edits(meta)):
+    part_src = part_edits(cur, meta)
+    ledger_src, ledger = ledger_edits(meta)
+    for src in (part_src, ledger_src):
         for sid, evs in src.items():
             edits[sid].update(evs)
     edits = {sid: sorted(v) for sid, v in edits.items() if v}
+    # PSRC: month -> [edit tool calls, with a path in the message JSON, part-table records, ledger records].
+    # The three sources overlap, so they are drawn side by side as coverage of the edit count, never stacked.
+    PSRC = {mo: [n, p, 0, 0] for mo, (n, p) in X["month_edits"].items()}
+    for col, src in ((2, part_src), (3, ledger_src)):
+        for evs in src.values():
+            for ts, _ in evs:
+                PSRC.setdefault(day_of(int(ts * 1000))[:7], [0, 0, 0, 0])[col] += 1
+    PSRC = {mo: PSRC[mo] for mo in sorted(PSRC)}
     path_cov = sum(1 for sid, s in S.items() if s["edits"] > 0 and sid in edits)
     editing = sum(1 for s in S.values() if s["edits"] > 0)
 
@@ -610,10 +644,12 @@ def main():
                   repos=CM["repos"], lines_cutoff=LINES_CUTOFF, heartbeat_cap_min=HEARTBEAT_CAP_MS // 60000,
                   ship_days=SHIP_DAYS, basis=CM["basis"], sessions_editing=editing, sessions_with_paths=path_cov,
                   ledger_present=os.path.exists(LEDGER_PATH)),
+        # LEDGER: what plugin/editLedger.ts has collected, plus the newest edit seen in the DB so the deck can tell a dead plugin from a quiet week
+        LEDGER=dict(path=LEDGER_PATH, lines=ledger["lines"], sessions=ledger["sessions"], first=ledger["first"], last=ledger["last"], last_edit=X["last_edit_ms"]),
         MONTHS=sorted(HM), HM=HM, HD=HD, PORDER=PORDER, LB=LB, COST=COST, DEPTH=depth, AGENTS=AGENTS, MODELS=MODELS, RHY=rhythm,
         DMODELS={"day": {d: dict(c) for d, c in models_day.items()}}, DTOK=DTOK,
         UA={w: v for w, v in ua_wt.items()}, UAM={m: v for m, v in sorted(ua_month.items())},
-        PROD=PROD, SHIP=PROD, CM=CM, DHRS=DHRS,
+        PROD=PROD, SHIP=PROD, CM=CM, DHRS=DHRS, PSRC=PSRC,
         DAYW=DAYW, DAYM=DAYM, DAYU=DAYU, RHYD=RHYD, SESS=SESS, SESS_COLS=SESS_COLS, IDX=IDX, PH=PH, PH_COLS=PH_COLS,
     )
     with open(args.out, "w") as f:
@@ -623,7 +659,8 @@ def main():
     print(f"{args.out}: {mt['start']} → {mt['end']}, {mt['sessions']} sessions, {mt['messages']:,} msgs, {mt['total_hr']} h, "
           f"{CM['total']} commits in {CM['repos']} repos — by files {b.get('files',0)}, by window {b.get('window',0)}, "
           f"advised only {b.get('advised',0)}, manual {b.get('manual',0)} · edit paths for {path_cov}/{editing} editing sessions"
-          f"{'' if mt['ledger_present'] else ' · no ledger yet'} · {time.time()-t0:.0f}s")
+          f" · ledger: {ledger['lines']} edits in {ledger['sessions']} sessions, last {day_of(ledger['last']) if ledger['last'] else 'never'}"
+          f"{'' if ledger['lines'] else ' (run make install-plugin, then restart opencode)'} · {time.time()-t0:.0f}s")
 
 
 if __name__ == "__main__":

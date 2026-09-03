@@ -57,17 +57,26 @@ check("funnel last stage is shipped", (await page.locator("#sfun .fbar i").last(
 check("ship rate has judged and unjudged models", (await page.locator("#stb tr").evaluateAll((rs) => rs.map((r) => r.children[9].innerText))).some((v) => v.endsWith("%"))
   && (await page.locator("#stb tr").evaluateAll((rs) => rs.map((r) => r.children[9].innerText))).some((v) => v === "—"));
 
+// edit-path coverage strip: one group of bars per month, message record present in every month, ledger status text and header chip agree
+const covSrcs = await page.locator("#pcov rect").evaluateAll((rs) => rs.map((r) => r.dataset.src));
+check("edit-path coverage: message record every month", covSrcs.filter((s) => s === "Message record").length === (await count("#pcov text[text-anchor=middle]")) && covSrcs.length > 8);
+const ledger = await page.evaluate(() => ({ lines: LEDGER.lines, stale: LEDGER.lines > 0 && LEDGER.last_edit - LEDGER.last > 864e5 }));
+const pcsum = await page.locator("#pcsum").innerText();
+check("edit-path coverage: ledger status", ledger.lines ? (ledger.stale ? pcsum.startsWith("Edit ledger stale") : /^Edit ledger live since \d{4}-\d{2}-\d{2}/.test(pcsum)) : pcsum.startsWith("Edit ledger inactive"), pcsum.slice(0, 120));
+check("ledger chip shown only when inactive or stale", (await page.locator("#k_ledger").isVisible()) === (!ledger.lines || ledger.stale));
+
 // global filters: window, session role, hide-small — every card must follow
 const snap = async () => ({
   total: await page.locator("#k_total").innerText(), badge: await page.locator("#k_badge").innerText(),
   months: await count("#mchart rect[data-s]"), daily: await count("#hchart rect[data-s]"), models: await count("#dchart rect[data-s]"),
   prod: await count("#pchart circle"), ship: await count("#schart circle"), commits: await count("#cchart circle[data-s]:not([pointer-events])"),
   who: await count("#uchart rect"), tokens: await count("#tcal .cell:visible"), rows: await count("#tb tr"), csum: await page.locator("#csum").innerText(),
+  cov: await count("#pcov rect"),
 });
 const all = await snap();
 await click('#gwin [data-w="30"]'); const w30 = await snap();
 check("30-day window changes KPIs", w30.total !== all.total && w30.badge !== all.badge);
-check("30-day window moves every card", w30.months < all.months && w30.daily < all.daily && w30.models < all.models && w30.tokens < all.tokens && w30.commits <= all.commits && w30.csum.includes("last 30 days"));
+check("30-day window moves every card", w30.months < all.months && w30.daily < all.daily && w30.models < all.models && w30.tokens < all.tokens && w30.commits <= all.commits && w30.cov < all.cov && w30.csum.includes("last 30 days"));
 check("filter chip and reset shown", (await page.locator("#gchip").innerText()).includes("last 30 days") && (await page.locator("#greset").isVisible()));
 await click("#prole [data-r=off]");
 check("local build toggle visible when role is off", await page.locator("#pscope").isVisible());
