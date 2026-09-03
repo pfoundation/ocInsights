@@ -381,15 +381,36 @@ def attribute_commits(S, meta, start_day, edits):
                 manual.append([c["at"], lines, 1 if mins else 0])
                 continue
             basis[how] += 1
+            # Entries are per session PHASE: a credited session contributes its build phase and, if it had one, its
+            # plan phase, splitting its credit, hours and prompts by phase time. Plan-only sessions active in the
+            # window get an advisor entry (share 0, flagged) so the planner→builder pairing can still see who planned;
+            # the off and split views ignore advisor entries, so credit and hours per commit are unchanged by them.
             ent = []
             for sid, w in weights.items():
-                (model, prov), _ = S[sid]["mp"].most_common(1)[0]
                 share = w / tot
                 ms = mins.get(sid, 0)
-                ent.append([idx(models, mi, model), idx(provs, pi, prov), role_of(meta[sid]["agent"]),
-                            round(share, 4), round(S[sid]["u"] * ms / max(S[sid]["ms"], 1), 3), round(ms / 3.6e6, 3)])
+                s = S[sid]
+                phases = [(r, ph) for r, ph in s["ph"].items() if ph["mp"] and ph["ms"] > 0] or [(role_of(meta[sid]["agent"]), None)]
+                for r, ph in phases:
+                    if ph is None:
+                        (model, prov), _ = s["mp"].most_common(1)[0]
+                        frac = 1.0
+                    else:
+                        (model, prov), _ = ph["mp"].most_common(1)[0]
+                        frac = ph["ms"] / max(s["ms"], 1)
+                    ent.append([idx(models, mi, model), idx(provs, pi, prov), r, round(share * frac, 4),
+                                round(s["u"] * ms / max(s["ms"], 1) * frac, 3), round(ms / 3.6e6 * frac, 3), 0])
                 if how == "files":
                     shipped[sid].append(c["at"])
+            for sid, ms in mins.items():
+                if sid in weights:
+                    continue
+                ph = S[sid]["ph"].get(1)
+                if ph and ph["mp"] and ph["ms"] > 0:
+                    (model, prov), _ = ph["mp"].most_common(1)[0]
+                    frac = ph["ms"] / max(S[sid]["ms"], 1)
+                    ent.append([idx(models, mi, model), idx(provs, pi, prov), 1, 0.0,
+                                round(S[sid]["u"] * ms / max(S[sid]["ms"], 1) * frac, 3), round(ms / 3.6e6 * frac, 3), 1])
             recs.append([lines, round(sum(mins.values()) / 3.6e6, 3), ent, c["at"], how])
     latest = max([r[3] for r in recs] + [m[0] for m in manual] + [0])
     return dict(models=models, provs=provs, recs=recs, manual=manual, total=total, repos=len(repos), latest=latest,

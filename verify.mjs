@@ -73,7 +73,11 @@ await click("#srole [data-r=off]");
 await click('#grole [data-r="plan"]'); check("plan scope reports phase hours (~a third of all time)", parseFloat(await page.locator("#k_total").innerText()) > 200); await click("#greset");
 
 // local controls
-await click("#crole [data-r=combo]"); check("planner→builder combos", (await count("#cchart circle[pointer-events=none]")) > 0); await click("#crole [data-r=off]");
+await click("#crole [data-r=combo]");
+check("planner→builder combos", (await count("#cchart circle[pointer-events=none]")) > 0);
+check("commit combos keep cross-model pairs (planner ≠ builder)", (await page.locator("#ctb tr td:first-child").allInnerTexts()).some((t) => { const [a, b] = t.split("→").map((s) => s.trim()); return a && b && a !== b; }));
+check("commit combos cover most windows, not only separate plan sessions", parseInt((await page.locator("#csum").innerText()).match(/(\d+) commits/)[1]) > 300);
+await click("#crole [data-r=off]");
 await click("#dgroup [data-g=provider]"); check("models grouped by provider", (await count("#dleg .lg")) < 12); await click("#dgroup [data-g=model]");
 await click("#pmetric [data-y=epd]"); check("edits per dollar view", (await page.locator("#psum").innerText()).includes("zero-cost")); await click("#pmetric [data-y=eph]");
 await click("#theme"); check("theme toggle", (await page.locator("#theme").innerText()) === "Dark" || (await page.locator("#theme").innerText()) === "Light"); await click("#theme");
