@@ -3,7 +3,7 @@
 # Usage: ./publish.sh [opencode_time_full.html]   (env GIST_ID overrides the target gist)
 set -euo pipefail
 FILE="${1:-opencode_time_full.html}"
-GIST_ID="${GIST_ID:-65ad8796a952e875bb72a1be19fbd052}"
+GIST_ID="${GIST_ID:-e6f9c7297ac1aaa9fdc3ce2a296e69d6}"
 [ -f "$FILE" ] || { echo "no such file: $FILE" >&2; exit 1; }
 grep -q '@@' "$FILE" && { echo "refusing to publish: unfilled placeholders in $FILE" >&2; exit 1; }
 gh gist edit "$GIST_ID" --add "$FILE"
