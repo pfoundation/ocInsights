@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Project time — 30 days</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Inconsolata:wght@400;500;600&display=swap');
+:root{--background:oklch(0.98 0.005 260);--foreground:oklch(0.15 0.005 260);--card:oklch(1 0 0);--card-foreground:oklch(0.15 0.005 260);--muted:oklch(0.94 0.005 260);--muted-foreground:oklch(0.45 0.005 260);--primary:oklch(0.55 0.16 55);--primary-foreground:oklch(0.98 0 0);--secondary:oklch(0.94 0.005 260);--secondary-foreground:oklch(0.25 0.005 260);--border:oklch(0.88 0.005 260);--chart-1:oklch(0.55 0.16 55);--chart-2:oklch(0.6 0.15 160);--chart-3:oklch(0.65 0.15 80);--chart-4:oklch(0.55 0.2 320);--chart-5:oklch(0.6 0.2 30)}
+.dark{--background:oklch(0.13 0.005 260);--foreground:oklch(0.95 0 0);--card:oklch(0.18 0.005 260);--card-foreground:oklch(0.95 0 0);--muted:oklch(0.25 0.005 260);--muted-foreground:oklch(0.65 0 0);--primary:oklch(0.62 0.18 55);--primary-foreground:oklch(0.98 0 0);--secondary:oklch(0.22 0.005 260);--secondary-foreground:oklch(0.95 0 0);--border:oklch(0.28 0.005 260);--chart-1:oklch(0.62 0.18 55);--chart-2:oklch(0.7 0.15 160);--chart-3:oklch(0.75 0.15 80);--chart-4:oklch(0.65 0.2 320);--chart-5:oklch(0.7 0.2 30)}
+*{box-sizing:border-box;border-radius:0!important}
+body{margin:0;background:var(--background)}
+.root{font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;background:var(--background);color:var(--foreground);min-height:100vh;padding:24px}
+.wrap{max-width:1120px;margin:0 auto}
+.bar{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.title{font-size:18px;font-weight:600;margin:0}
+.desc{color:var(--muted-foreground);font-size:13px;margin:2px 0 0}
+.badge{display:inline-flex;align-items:center;background:var(--secondary);color:var(--secondary-foreground);border:1px solid var(--border);font-size:12px;font-weight:500;padding:3px 10px;margin-left:auto;white-space:nowrap}
+.grid{display:grid;gap:12px}.kpis{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.chead{padding:16px 16px 0}.ctitle{font-size:14px;font-weight:600;margin:0}.cdesc{color:var(--muted-foreground);font-size:13px;margin:4px 0 0}
+.cbody{padding:16px}
+.kpi{font-family:"Inconsolata",monospace;font-size:30px;font-weight:600;margin-top:8px}
+.ksub{color:var(--muted-foreground);font-size:12px;margin-top:2px}
+.main{grid-template-columns:1.65fr 1fr;margin-top:12px}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.lg{display:inline-flex;align-items:center;gap:6px;font-size:12px;border:1px solid var(--border);background:var(--card);padding:4px 8px;cursor:pointer;user-select:none}
+.lg i{width:10px;height:10px;display:inline-block}.lg.off{opacity:.35}
+.mono{font-family:"Inconsolata",monospace}
+.dim{color:var(--muted-foreground);font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{color:var(--muted-foreground);font-weight:500;text-align:left;padding:8px;border-bottom:1px solid var(--border);font-size:12px}
+td{padding:8px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr[data-sel]{background:var(--muted)}
+.meter{height:6px;background:var(--muted);margin-top:6px}.meter i{display:block;height:100%;background:var(--primary)}
+.cal{display:flex;gap:4px}.wk{display:flex;flex-direction:column;gap:4px}.cell{width:16px;height:16px;border:1px solid var(--border)}
+#tip{position:fixed;pointer-events:none;background:var(--card);color:var(--card-foreground);border:1px solid var(--border);padding:8px 10px;font-size:12px;display:none;z-index:9;box-shadow:0 2px 8px rgba(0,0,0,.18);max-width:260px}
+svg text{font-family:"Inconsolata",monospace}
+@media(max-width:900px){.kpis{grid-template-columns:1fr 1fr}.main{grid-template-columns:1fr}}
+</style></head>
+<body><div class="dark"><div class="root"><div class="wrap">
+<div class="bar"><div><p class="title">Project time</p><p class="desc">Estimated active time by worktree, 2026-08-04 to 2026-09-03. Heartbeat method, 10 minute cap.</p></div><span class="badge mono">150.40 h total</span></div>
+<div class="grid kpis">
+<div class="card"><div class="chead"><p class="ctitle">Total active</p><p class="cdesc">Across 13 projects</p></div><div class="cbody"><div class="kpi" data-n="150.4">0</div><div class="ksub mono">355 sessions · 17,337 messages</div></div></div>
+<div class="card"><div class="chead"><p class="ctitle">Active days</p><p class="cdesc">Days with activity</p></div><div class="cbody"><div class="kpi" data-n="30">0</div><div class="ksub">of 31 · idle 2026-08-24</div></div></div>
+<div class="card"><div class="chead"><p class="ctitle">Top project</p><p class="cdesc mono">/home/ubuntu/dev/datastudio</p></div><div class="cbody"><div class="kpi">56.03 h</div><div class="ksub mono">37.3% · 102 sessions</div></div></div>
+<div class="card"><div class="chead"><p class="ctitle">Peak day</p><p class="cdesc mono">2026-08-06</p></div><div class="cbody"><div class="kpi" data-n="17.99">0</div><div class="ksub mono">opencache 15.96 h surge</div></div></div>
+</div>
+<div class="grid main">
+<div class="card"><div class="chead"><p class="ctitle">Daily hours by project</p><p class="cdesc">Stacked area, hours per day. Select a legend item to isolate a series.</p></div><div class="cbody"><div class="legend" id="leg"></div><svg id="stack" viewBox="0 0 900 320" width="100%"></svg><p class="dim">Hover a day for the breakdown.</p></div></div>
+<div class="card"><div class="chead"><p class="ctitle">Activity calendar</p><p class="cdesc">Total hours per day, Monday rows.</p></div><div class="cbody"><div class="cal" id="cal"></div><p class="dim" style="margin:10px 0 0">Scale: none · &lt;1 h · &lt;3 h · &lt;6 h · ≥6 h</p></div></div>
+</div>
+<div class="card" style="margin-top:12px"><div class="chead"><p class="ctitle">Projects</p><p class="cdesc">Sorted by active hours. Machine values in mono.</p></div><div class="cbody" style="padding-top:8px"><table><thead><tr><th>Worktree</th><th>Sessions</th><th>Messages</th><th>Hours</th><th>Share</th></tr></thead><tbody id="tb"></tbody></table></div></div>
+<p class="dim">Estimate, not wall clock. Active adds min(delta, 10 min) per message plus 60 s seed. User and assistant messages only. Source: session_v2 and session_message.</p>
+</div></div></div><div id="tip"></div>
+<script>
+const DAYS=["2026-08-04","2026-08-05","2026-08-06","2026-08-07","2026-08-08","2026-08-09","2026-08-10","2026-08-11","2026-08-12","2026-08-13","2026-08-14","2026-08-15","2026-08-16","2026-08-17","2026-08-18","2026-08-19","2026-08-20","2026-08-21","2026-08-22","2026-08-23","2026-08-24","2026-08-25","2026-08-26","2026-08-27","2026-08-28","2026-08-29","2026-08-30","2026-08-31","2026-09-01","2026-09-02","2026-09-03"];
+const C=["var(--chart-1)","var(--chart-2)","var(--chart-3)","var(--chart-4)","var(--chart-5)","#6b7280","#9ca3af"];
+const SERIES=[
+{n:"datastudio",v:[3.59,0,2.03,2.6,0.48,2.03,1.26,0,0.59,0.49,6.98,2.3,0.18,0.65,4.45,1.03,1.04,3.39,1.21,0.38,0,2.86,1.33,0.84,2.77,2.75,0.81,0,4.98,3.76,1.22]},
+{n:"opencache",v:[5.72,2.83,15.96,0.18,0,0,2.1,0.3,2.76,3,6.16,1.5,0,0,0.61,1.3,0.25,0.21,0,0,0,1.86,0,0,0,0,0,0,1.84,0,0]},
+{n:"sarElWaetAI",v:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,11.79,0.87,0,0.12,0.71,10.07,0.28]},
+{n:"ocPluginUsage",v:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4.17,2.2,1.84]},
+{n:"nrcsAgent",v:[0,0,0,0,0,0,1.83,0,1.08,0.79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+{n:"/home/ubuntu",v:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.25,0,0,0.76,0,0,2.07,0,0.39]},
+{n:"other (7)",v:[0,0,0,0,0,0,0,0,0,0,0.22,0.84,0,0.19,0,0,0.79,0.6,1.06,0.45,0,0,0,0,2.11,0,0,0,0.79,0,0]}];
+const ROWS=[["/home/ubuntu/dev/datastudio",102,5427,56.03,37.3],["/home/ubuntu/dev/opencache",108,6007,46.6,31],["/home/ubuntu/dev/sarElWaetAI",59,3144,23.85,15.9],["/home/ubuntu/dev/ocPluginUsage",20,821,8.22,5.5],["/home/ubuntu/dev/nrcsAgent",17,621,3.7,2.5],["/home/ubuntu",9,423,3.47,2.3],["/",18,318,3.43,2.3],["/home/ubuntu/dev",6,206,2.11,1.4],["/home/ubuntu/dev/v0-openix-traffic",6,121,0.79,0.5],["/home/ubuntu/dev/lgBK",4,50,0.76,0.5],["/home/ubuntu/dev/ccOCBridge",1,74,0.62,0.4],["/home/ubuntu/dev/asrWorkhorse",2,84,0.42,0.3],["/home/ubuntu/dev/opencacheClickHouse",3,42,0.4,0.3]];
+let hidden={};
+document.querySelectorAll('[data-n]').forEach(el=>{const t=parseFloat(el.dataset.n);let s=null;const st=ms=>{if(!s)s=ms;const p=Math.min(1,(ms-s)/900);el.textContent=(t*p).toFixed(t>=30?0:2).replace(/\.00$/,'');if(p<1)requestAnimationFrame(st)};requestAnimationFrame(st)});
+const leg=document.getElementById('leg');
+SERIES.forEach((s,i)=>{const d=document.createElement('span');d.className='lg';d.innerHTML=`<i style="background:${C[i]}"></i><span class="mono">${s.n}</span>`;d.onclick=()=>{hidden[s.n]=!hidden[s.n];d.classList.toggle('off',hidden[s.n]);draw()};leg.appendChild(d)});
+const svg=document.getElementById('stack'),NS='http://www.w3.org/2000/svg',W=900,H=320,PL=44,PR=10,PT=14,PB=26;
+function vis(){return SERIES.filter(s=>!hidden[s.n])}
+function draw(){svg.innerHTML='';const S=vis(),n=DAYS.length,max=18;const X=i=>PL+i*(W-PL-PR)/(n-1),Y=v=>H-PB-v/max*(H-PT-PB);
+for(let g=0;g<=4;g++){const v=max*g/4,y=Y(v);const l=document.createElementNS(NS,'line');l.setAttribute('x1',PL);l.setAttribute('x2',W-PR);l.setAttribute('y1',y);l.setAttribute('y2',y);l.setAttribute('stroke','currentColor');l.setAttribute('opacity','.15');svg.appendChild(l);const t=document.createElementNS(NS,'text');t.setAttribute('x',2);t.setAttribute('y',y+4);t.setAttribute('font-size','11');t.setAttribute('fill','currentColor');t.setAttribute('opacity','.6');t.textContent=v+'h';svg.appendChild(t)}
+let cum=Array(n).fill(0);[...S].reverse().forEach(s=>{const idx=SERIES.indexOf(s);const top=cum.map((c,i)=>c+s.v[i]);let d=`M${X(0)},${Y(top[0])}`;for(let i=1;i<n;i++)d+=`L${X(i)},${Y(top[i])}`;for(let i=n-1;i>=0;i--)d+=`L${X(i)},${Y(cum[i])}`;d+='Z';const p=document.createElementNS(NS,'path');p.setAttribute('d',d);p.setAttribute('fill',C[idx]);p.setAttribute('fill-opacity','.28');p.setAttribute('stroke',C[idx]);p.setAttribute('stroke-width','1.5');svg.appendChild(p);cum=top});
+const cr=document.createElementNS(NS,'line');cr.setAttribute('y1',PT);cr.setAttribute('y2',H-PB);cr.setAttribute('stroke','currentColor');cr.setAttribute('opacity','.5');cr.style.display='none';svg.appendChild(cr);
+const ov=document.createElementNS(NS,'rect');ov.setAttribute('x',PL);ov.setAttribute('y',PT);ov.setAttribute('width',W-PL-PR);ov.setAttribute('height',H-PT-PB);ov.setAttribute('fill','transparent');svg.appendChild(ov);
+const tip=document.getElementById('tip');
+ov.addEventListener('mousemove',e=>{const r=svg.getBoundingClientRect();const mx=(e.clientX-r.left)/r.width*W;let bi=0,bd=1e9;for(let i=0;i<n;i++){const d=Math.abs(X(i)-mx);if(d<bd){bd=d;bi=i}}cr.setAttribute('x1',X(bi));cr.setAttribute('x2',X(bi));cr.style.display='block';const rows=S.map(s=>({n:s.n,v:s.v[bi]})).filter(o=>o.v>0).sort((a,b)=>b.v-a.v);const tot=rows.reduce((a,b)=>a+b.v,0);tip.innerHTML=`<b class="mono">${DAYS[bi]} · ${tot.toFixed(2)} h</b><br>`+rows.slice(0,5).map(o=>`${o.n} <span class="mono">${o.v.toFixed(2)} h</span>`).join('<br>');tip.style.display='block';tip.style.left=e.clientX+14+'px';tip.style.top=e.clientY+14+'px'});
+ov.addEventListener('mouseleave',()=>{tip.style.display='none';cr.style.display='none'});
+DAYS.forEach((d,i)=>{if(i%5!==0&&i!==n-1)return;const t=document.createElementNS(NS,'text');t.setAttribute('x',X(i));t.setAttribute('y',H-8);t.setAttribute('font-size','10');t.setAttribute('text-anchor','middle');t.setAttribute('fill','currentColor');t.setAttribute('opacity','.6');t.textContent=d.slice(5);svg.appendChild(t)});}
+draw();
+const cal=document.getElementById('cal');let fd=new Date('2026-08-04');while(fd.getDay()!==1)fd.setDate(fd.getDate()-1);
+const tm={};DAYS.forEach((d,i)=>{tm[d]=vis().reduce((a,s)=>a+s.v[i],0)});
+function lvl(h){if(h<=0)return'var(--muted)';if(h<1)return'color-mix(in oklab, var(--primary) 30%, var(--muted))';if(h<3)return'color-mix(in oklab, var(--primary) 55%, var(--muted))';if(h<6)return'color-mix(in oklab, var(--primary) 80%, var(--muted))';return'var(--primary)'}
+function paint(){cal.innerHTML='';for(let w=0;w<5;w++){const wk=document.createElement('div');wk.className='wk';for(let k=0;k<7;k++){const dt=new Date(fd);dt.setDate(fd.getDate()+w*7+k);const iso=dt.toISOString().slice(0,10);const c=document.createElement('div');c.className='cell';if(iso<DAYS[0]||iso>DAYS[30]){c.style.visibility='hidden'}else{const h=(DAYS.indexOf(iso)>=0?SERIES.filter(s=>!hidden[s.n]).reduce((a,s)=>a+s.v[DAYS.indexOf(iso)],0):0);c.style.background=lvl(h);c.title=`${iso}: ${h.toFixed(2)} h`}wk.appendChild(c)}cal.appendChild(wk)}}
+paint();new MutationObserver(paint).observe(leg,{childList:true});
+const tb=document.getElementById('tb');const maxH=56.03;
+ROWS.forEach(r=>{const tr=document.createElement('tr');tr.innerHTML=`<td class="mono">${r[0]}</td><td class="mono">${r[1]}</td><td class="mono">${r[2]}</td><td class="mono">${r[3].toFixed(2)}</td><td class="mono">${r[4].toFixed(1)}%<div class="meter"><i style="width:${(r[3]/maxH*100).toFixed(1)}%"></i></div></td>`;tb.appendChild(tr)});
+</script></body></html>
