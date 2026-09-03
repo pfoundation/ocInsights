@@ -32,7 +32,7 @@ def main():
     weeks = (dt.date.fromisoformat(m["end"]) - monday).days // 7 + 1
     d["RANGE"] = dict(start=m["start"], end=m["end"], winStart=m["win_start"], weeks=weeks, sessions=m["sessions"])
 
-    for name in ["RANGE", "DTOK", "CM", "DAYW", "DAYM", "DAYU", "RHYD", "SESS", "SESS_COLS", "IDX"]:
+    for name in ["RANGE", "DTOK", "CM", "DAYW", "DAYM", "DAYU", "RHYD", "SESS", "SESS_COLS", "IDX", "PH", "PH_COLS"]:
         h = h.replace(f"@@{name}@@", json.dumps(d[name], separators=(",", ":")))
 
     month_name = lambda ym: dt.date.fromisoformat(ym + "-01").strftime("%B")

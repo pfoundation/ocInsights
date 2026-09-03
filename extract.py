@@ -40,6 +40,7 @@ PLAN_AGENTS = {"plan", "Metis (Plan Consultant)"}
 EDIT_TOOLS = {"edit", "write", "apply_patch", "multiedit", "patch"}
 VERIFY_RE = re.compile(r"\b(vitest|jest|pytest|go test|cargo test|npm test|pnpm test|bun test|pnpm run test|npm run test|tsc|pnpm build|npm run build|pnpm run build|next build|bun build|cargo build|go build|eslint|pnpm lint|npm run lint|pnpm run lint|biome|ruff|golangci)\b")
 COMMIT_RE = re.compile(r"\bgit\s+commit\b")
+AGENT_RE = re.compile(r'"agent":"([^"]+)"')  # each assistant message records the agent (plan/build/...) it ran under
 
 
 def canon(model_id: str) -> str:
@@ -157,7 +158,8 @@ def ledger_edits(meta):
 def scan_messages(cur, meta, win_start_ms):
     """Single ordered pass over user+assistant messages. Returns per-session stats and global rollups."""
     S = defaultdict(lambda: dict(mp=Counter(), u=0, a=0, err=0, ms=0, last=None, ev=[], edits=0, eerr=0, files=set(),
-                                 reads=0, bash=0, tools=0, terr=0, ver=0, commit=0, edit_ev=[], first=None, comp=0, day0=None))
+                                 reads=0, bash=0, tools=0, terr=0, ver=0, commit=0, edit_ev=[], first=None, comp=0, day0=None, cur=None,
+                                 ph=defaultdict(lambda: dict(mp=Counter(), ms=0, u=0, a=0, err=0, edits=0, eerr=0, files=set(), reads=0, bash=0, tools=0, terr=0, ver=0, commit=0))))
     day_wt_ms = defaultdict(Counter)      # day -> worktree -> ms
     day_wt_role = defaultdict(lambda: defaultdict(lambda: [0, 0, 0]))  # day -> worktree -> ms by role code [all, plan, build]
     rhythm_day = defaultdict(lambda: [0] * 24)  # day -> hour -> messages
@@ -190,7 +192,13 @@ def scan_messages(cur, meta, win_start_ms):
         if s["first"] is None:
             s["first"] = tc / 1000
             s["day0"] = day
-        r = role_of(m["agent"])
+        if typ == "assistant":
+            am = AGENT_RE.search(data[:400])
+            if am:
+                s["cur"] = role_of(am.group(1))
+        r = s["cur"] if s["cur"] is not None else role_of(m["agent"])
+        ph = s["ph"][r]
+        ph["ms"] += inc
         dr = day_wt_role[day][wt]
         dr[0] += inc
         if r:
@@ -206,12 +214,14 @@ def scan_messages(cur, meta, win_start_ms):
         month = day[:7]
         if typ == "user":
             s["u"] += 1
+            ph["u"] += 1
             k = 1 if m["child"] else 0
             ua_wt[wt][k] += 1
             ua_month[month][k] += 1
             day_u[day][k] += 1
             continue
         s["a"] += 1
+        ph["a"] += 1
         ua_wt[wt][2] += 1
         ua_month[month][2] += 1
         day_u[day][2] += 1
@@ -223,6 +233,7 @@ def scan_messages(cur, meta, win_start_ms):
         model = canon(mm.get("id", "(unlisted)"))
         prov = mm.get("providerID", "(unlisted)")
         s["mp"][(model, prov)] += 1
+        ph["mp"][(model, prov)] += 1
         if tc >= win_start_ms:
             models_day[day][model + "|" + prov] += 1
         mdr = models_day_role[day][model + "|" + prov]
@@ -231,6 +242,7 @@ def scan_messages(cur, meta, win_start_ms):
             mdr[r] += 1
         if o.get("error"):
             s["err"] += 1
+            ph["err"] += 1
         for part in o.get("content") or []:
             if part.get("type") != "tool":
                 continue
@@ -238,27 +250,36 @@ def scan_messages(cur, meta, win_start_ms):
             st = part.get("state") or {}
             status = st.get("status")
             s["tools"] += 1
+            ph["tools"] += 1
             if status == "error":
                 s["terr"] += 1
+                ph["terr"] += 1
             if name in EDIT_TOOLS:
                 s["edits"] += 1
+                ph["edits"] += 1
                 if status == "error":
                     s["eerr"] += 1
+                    ph["eerr"] += 1
                 f = st.get("title") or (st.get("input") or {}).get("filePath") or (st.get("input") or {}).get("path")
                 if f:
                     s["files"].add(f)
+                    ph["files"].add(f)
                     rf = rel_file(f, m["dir"])
                     if rf:
                         s["edit_ev"].append((tc / 1000, rf))
             elif name == "read":
                 s["reads"] += 1
+                ph["reads"] += 1
             elif name in ("bash", "shell"):
                 s["bash"] += 1
+                ph["bash"] += 1
                 c = (st.get("input") or {}).get("command") or ""
                 if VERIFY_RE.search(c):
                     s["ver"] += 1
+                    ph["ver"] += 1
                 if COMMIT_RE.search(c):
                     s["commit"] += 1
+                    ph["commit"] += 1
     return S, day_wt_ms, day_sess, rhythm, models_day, ua_wt, ua_month, depth, n_msgs, dict(day_wt_role=day_wt_role, rhythm_day=rhythm_day, day_u=day_u, models_day_role=models_day_role)
 
 
@@ -504,7 +525,18 @@ def main():
             ix[kind][v] = len(IDX[kind])
             IDX[kind].append(v)
         return ix[kind][v]
-    SESS = []
+    SESS, PH = [], []
+
+    def phase_models(s):
+        out = []
+        for r in (1, 2):
+            ph = s["ph"].get(r) if s else None
+            if ph and ph["mp"]:
+                pm = ph["mp"].most_common(1)[0][0]
+                out += [idx("model", pm[0]), idx("prov", pm[1])]
+            else:
+                out += [-1, -1]
+        return out
     for sid, m in meta.items():
         s = S.get(sid)
         if s and s["mp"]:
@@ -518,9 +550,19 @@ def main():
                      idx("lmodel", model_label(m["model"])), round((s["ms"] if s else 0) / 3.6e6, 3), s["u"] if s else 0, s["a"] if s else 0, s["err"] if s else 0,
                      round(m["cost"], 4), m["fresh"], m["cache_r"], m["cache_w"], s["edits"] if s else 0, s["eerr"] if s else 0, len(s["files"]) if s else 0,
                      s["reads"] if s else 0, s["bash"] if s else 0, s["tools"] if s else 0, s["terr"] if s else 0, s["ver"] if s else 0, s["commit"] if s else 0,
-                     lines, s["comp"] if s else 0, sh, lag, paths, m["add"], m["dele"]])
+                     lines, s["comp"] if s else 0, sh, lag, paths, m["add"], m["dele"],
+                     *phase_models(s)])
+        if s:
+            for r, ph in s["ph"].items():
+                if not (ph["a"] or ph["u"]):
+                    continue
+                pm = ph["mp"].most_common(1)[0][0] if ph["mp"] else (model, prov)
+                share = ph["ms"] / max(s["ms"], 1)
+                PH.append([len(SESS) - 1, r, idx("model", pm[0]), idx("prov", pm[1]), round(ph["ms"] / 3.6e6, 3), ph["u"], ph["a"], ph["err"],
+                           round(m["cost"] * share, 4), ph["edits"], ph["eerr"], len(ph["files"]), ph["reads"], ph["bash"], ph["tools"], ph["terr"], ph["ver"], ph["commit"]])
     SESS_COLS = ["day", "wt", "agent", "role", "child", "model", "prov", "lmodel", "hrs", "u", "a", "err", "cost", "fresh", "cacheR", "cacheW",
-                 "edits", "eerr", "files", "reads", "bash", "tools", "terr", "ver", "commit", "lines", "comp", "shipped", "lag", "paths", "add", "dele"]
+                 "edits", "eerr", "files", "reads", "bash", "tools", "terr", "ver", "commit", "lines", "comp", "shipped", "lag", "paths", "add", "dele", "pm", "pp", "bm", "bp"]
+    PH_COLS = ["sess", "role", "model", "prov", "hrs", "u", "a", "err", "cost", "edits", "eerr", "files", "reads", "bash", "tools", "terr", "ver", "commit"]
     DAYW = {d: {w: [round(v[0] / 3.6e6, 3), round(v[1] / 3.6e6, 3), round(v[2] / 3.6e6, 3)] for w, v in per.items()} for d, per in X["day_wt_role"].items()}
     DAYM = {d: dict(per) for d, per in X["models_day_role"].items()}
     DAYU = dict(X["day_u"])
@@ -551,7 +593,7 @@ def main():
         DMODELS={"day": {d: dict(c) for d, c in models_day.items()}}, DTOK=DTOK,
         UA={w: v for w, v in ua_wt.items()}, UAM={m: v for m, v in sorted(ua_month.items())},
         PROD=PROD, SHIP=PROD, CM=CM, DHRS=DHRS,
-        DAYW=DAYW, DAYM=DAYM, DAYU=DAYU, RHYD=RHYD, SESS=SESS, SESS_COLS=SESS_COLS, IDX=IDX,
+        DAYW=DAYW, DAYM=DAYM, DAYU=DAYU, RHYD=RHYD, SESS=SESS, SESS_COLS=SESS_COLS, IDX=IDX, PH=PH, PH_COLS=PH_COLS,
     )
     with open(args.out, "w") as f:
         json.dump(data, f, separators=(",", ":"))

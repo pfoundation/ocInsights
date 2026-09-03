@@ -64,6 +64,14 @@ check("hide small entries", small.commits < all.commits && small.rows <= all.row
 await click("#mrole"); check("monthly hours stacked by role", (await page.locator("#mleg .lg").allInnerTexts()).join(" ").includes("build")); await click("#mrole");
 check("no console errors after global filters", errors.length === 0, errors.join(" | ").slice(0, 300));
 
+// plan / build phases on the model cards
+await click("#prole [data-r=split]"); check("productivity: plan vs build phases", (await count("#pchart circle[stroke-dasharray]")) > 5 && (await page.locator("#psum").innerText()).includes("by phase"));
+await click("#prole [data-r=combo]"); check("productivity: planner→builder combos", (await count("#pchart circle[pointer-events=none]")) > 5 && (await page.locator("#pchart text.lbl").evaluateAll((ts) => ts.map((t) => t.textContent))).some((t) => t.includes("→")));
+await click("#prole [data-r=off]");
+await click("#srole [data-r=combo]"); check("shipping: combos drive funnel and table", (await page.locator("#sfun .row .lab").first().innerText()).includes("→") && (await page.locator("#stb tr").first().innerText()).includes("→"));
+await click("#srole [data-r=off]");
+await click('#grole [data-r="plan"]'); check("plan scope reports phase hours (~a third of all time)", parseFloat(await page.locator("#k_total").innerText()) > 200); await click("#greset");
+
 // local controls
 await click("#crole [data-r=combo]"); check("planner→builder combos", (await count("#cchart circle[pointer-events=none]")) > 0); await click("#crole [data-r=off]");
 await click("#dgroup [data-g=provider]"); check("models grouped by provider", (await count("#dleg .lg")) < 12); await click("#dgroup [data-g=model]");
