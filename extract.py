@@ -157,8 +157,12 @@ def ledger_edits(meta):
 def scan_messages(cur, meta, win_start_ms):
     """Single ordered pass over user+assistant messages. Returns per-session stats and global rollups."""
     S = defaultdict(lambda: dict(mp=Counter(), u=0, a=0, err=0, ms=0, last=None, ev=[], edits=0, eerr=0, files=set(),
-                                 reads=0, bash=0, tools=0, terr=0, ver=0, commit=0, edit_ev=[], first=None))
+                                 reads=0, bash=0, tools=0, terr=0, ver=0, commit=0, edit_ev=[], first=None, comp=0, day0=None))
     day_wt_ms = defaultdict(Counter)      # day -> worktree -> ms
+    day_wt_role = defaultdict(lambda: defaultdict(lambda: [0, 0, 0]))  # day -> worktree -> ms by role code [all, plan, build]
+    rhythm_day = defaultdict(lambda: [0] * 24)  # day -> hour -> messages
+    day_u = defaultdict(lambda: [0, 0, 0])      # day -> [your prompts, subagent prompts, replies]
+    models_day_role = defaultdict(lambda: defaultdict(lambda: [0, 0, 0]))  # day -> "model|provider" -> msgs by role code [all, plan, build]
     day_sess = defaultdict(set)           # day -> sessions active
     rhythm = [[0] * 24 for _ in range(7)] # Sun..Sat x hour
     models_day = defaultdict(Counter)     # day -> "model|provider" -> assistant msgs (window only)
@@ -178,12 +182,20 @@ def scan_messages(cur, meta, win_start_ms):
         d[1] = max(d[1], day)
         if typ == "compaction":
             d[2] += 1
+            S[sid]["comp"] += 1
             continue
         n_msgs += 1
         s = S[sid]
         inc = HEARTBEAT_SEED_MS if s["last"] is None else min(tc - s["last"], HEARTBEAT_CAP_MS)
         if s["first"] is None:
             s["first"] = tc / 1000
+            s["day0"] = day
+        r = role_of(m["agent"])
+        dr = day_wt_role[day][wt]
+        dr[0] += inc
+        if r:
+            dr[r] += inc
+        rhythm_day[day][dt.datetime.fromtimestamp(tc / 1000, dt.timezone.utc).hour] += 1
         s["last"] = tc
         s["ms"] += inc
         s["ev"].append((tc / 1000, inc))
@@ -197,10 +209,12 @@ def scan_messages(cur, meta, win_start_ms):
             k = 1 if m["child"] else 0
             ua_wt[wt][k] += 1
             ua_month[month][k] += 1
+            day_u[day][k] += 1
             continue
         s["a"] += 1
         ua_wt[wt][2] += 1
         ua_month[month][2] += 1
+        day_u[day][2] += 1
         try:
             o = json.loads(data)
         except Exception:
@@ -211,6 +225,10 @@ def scan_messages(cur, meta, win_start_ms):
         s["mp"][(model, prov)] += 1
         if tc >= win_start_ms:
             models_day[day][model + "|" + prov] += 1
+        mdr = models_day_role[day][model + "|" + prov]
+        mdr[0] += 1
+        if r:
+            mdr[r] += 1
         if o.get("error"):
             s["err"] += 1
         for part in o.get("content") or []:
@@ -241,7 +259,7 @@ def scan_messages(cur, meta, win_start_ms):
                     s["ver"] += 1
                 if COMMIT_RE.search(c):
                     s["commit"] += 1
-    return S, day_wt_ms, day_sess, rhythm, models_day, ua_wt, ua_month, depth, n_msgs
+    return S, day_wt_ms, day_sess, rhythm, models_day, ua_wt, ua_month, depth, n_msgs, dict(day_wt_role=day_wt_role, rhythm_day=rhythm_day, day_u=day_u, models_day_role=models_day_role)
 
 
 # --------------------------------------------------------------- commits ---
@@ -375,7 +393,7 @@ def main():
     win_start = (dt.date.fromisoformat(end_day) - dt.timedelta(days=WINDOW_DAYS - 1)).isoformat()
     win_start_ms = int(dt.datetime.fromisoformat(win_start).replace(tzinfo=dt.timezone.utc).timestamp() * 1000)
 
-    S, day_wt_ms, day_sess, rhythm, models_day, ua_wt, ua_month, depth, n_msgs = scan_messages(cur, meta, win_start_ms)
+    S, day_wt_ms, day_sess, rhythm, models_day, ua_wt, ua_month, depth, n_msgs, X = scan_messages(cur, meta, win_start_ms)
 
     # hours by worktree: monthly, daily window, totals
     HM = defaultdict(lambda: defaultdict(float))
@@ -444,6 +462,7 @@ def main():
     AGG = defaultdict(Counter)
     lines_cut = int(dt.datetime.fromisoformat(LINES_CUTOFF).replace(tzinfo=dt.timezone.utc).timestamp() * 1000)
     ship_lag = defaultdict(list)  # (model, prov, build) -> hours from session start to first credited commit
+    per_sess_ship = {}            # sid -> (shipped, lag_h, has_paths)
     for sid, s in S.items():
         if not s["a"]:
             continue
@@ -469,11 +488,43 @@ def main():
         g["s_paths"] += 1 if ed and sid in edits else 0  # sessions whose shipping could be judged at all
         if sh:
             ship_lag[key].append((first_commit - s["first"]) / 3600)
+        per_sess_ship[sid] = (1 if sh else 0, round((first_commit - s["first"]) / 3600, 2) if sh else -1, 1 if (ed and sid in edits) else 0)
     PROD = []
     for k, g in AGG.items():
         lag = sorted(ship_lag[k])
         PROD.append({"m": k[0], "p": k[1], "b": k[2], **{x: (round(v, 3) if isinstance(v, float) else v) for x, v in g.items()},
                      "ship_lag_med": round(lag[len(lag) // 2], 2) if lag else None})
+
+    # per-session rows and day-granular series: everything the deck re-derives under a window / role filter
+    IDX = dict(wt=[], agent=[], model=[], prov=[], lmodel=[])
+    ix = {k: {} for k in IDX}
+
+    def idx(kind, v):
+        if v not in ix[kind]:
+            ix[kind][v] = len(IDX[kind])
+            IDX[kind].append(v)
+        return ix[kind][v]
+    SESS = []
+    for sid, m in meta.items():
+        s = S.get(sid)
+        if s and s["mp"]:
+            (model, prov), _ = s["mp"].most_common(1)[0]
+        else:
+            model, prov = "(none)", "(none)"
+        day = (s and s["day0"]) or day_of(m["created"])
+        lines = min(m["add"] + m["dele"], LINES_CAP) if (m["has_lines"] and m["created"] < lines_cut) else -1
+        sh, lag, paths = per_sess_ship.get(sid, (0, -1, 0))
+        SESS.append([day, idx("wt", m["wt"]), idx("agent", m["agent"]), role_of(m["agent"]), int(m["child"]), idx("model", model), idx("prov", prov),
+                     idx("lmodel", model_label(m["model"])), round((s["ms"] if s else 0) / 3.6e6, 3), s["u"] if s else 0, s["a"] if s else 0, s["err"] if s else 0,
+                     round(m["cost"], 4), m["fresh"], m["cache_r"], m["cache_w"], s["edits"] if s else 0, s["eerr"] if s else 0, len(s["files"]) if s else 0,
+                     s["reads"] if s else 0, s["bash"] if s else 0, s["tools"] if s else 0, s["terr"] if s else 0, s["ver"] if s else 0, s["commit"] if s else 0,
+                     lines, s["comp"] if s else 0, sh, lag, paths])
+    SESS_COLS = ["day", "wt", "agent", "role", "child", "model", "prov", "lmodel", "hrs", "u", "a", "err", "cost", "fresh", "cacheR", "cacheW",
+                 "edits", "eerr", "files", "reads", "bash", "tools", "terr", "ver", "commit", "lines", "comp", "shipped", "lag", "paths"]
+    DAYW = {d: {w: [round(v[0] / 3.6e6, 3), round(v[1] / 3.6e6, 3), round(v[2] / 3.6e6, 3)] for w, v in per.items()} for d, per in X["day_wt_role"].items()}
+    DAYM = {d: dict(per) for d, per in X["models_day_role"].items()}
+    DAYU = dict(X["day_u"])
+    RHYD = dict(X["rhythm_day"])
 
     fresh = sum(m["fresh"] for m in meta.values())
     u_top = sum(s["u"] for sid, s in S.items() if not meta[sid]["child"])
@@ -500,6 +551,7 @@ def main():
         DMODELS={"day": {d: dict(c) for d, c in models_day.items()}}, DTOK=DTOK,
         UA={w: v for w, v in ua_wt.items()}, UAM={m: v for m, v in sorted(ua_month.items())},
         PROD=PROD, SHIP=PROD, CM=CM, DHRS=DHRS,
+        DAYW=DAYW, DAYM=DAYM, DAYU=DAYU, RHYD=RHYD, SESS=SESS, SESS_COLS=SESS_COLS, IDX=IDX,
     )
     with open(args.out, "w") as f:
         json.dump(data, f, separators=(",", ":"))
