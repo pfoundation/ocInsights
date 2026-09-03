@@ -32,7 +32,19 @@ Every number in the deck is computed in `extract.py`. `build.py` only formats an
 
 ## What the deck contains
 
-Header KPIs, then in order: monthly hours by project (all worktrees, no "other" bucket) · daily hours by project for the last 90 days · models per day for the last 90 days with group-by model / family / provider · productivity by model (edits vs cost) · shipping by model (edits vs steering, plus a funnel of how far work got) · shipping in commits (commits from git, by size and by count, with role and window filters) · who is talking (your prompts vs subagent prompts vs agent replies, with the autonomy ratio) · tokens per day · all-projects table · agents and models · work rhythm · session depth.
+A global filter bar under the header, then header KPIs, then in order: monthly hours by project (all worktrees, no "other" bucket; can stack by session role instead) · daily hours by project · models per day with group-by model / family / provider · productivity by model (edits vs cost) · shipping by model (edits vs steering, plus a funnel of how far work got) · shipping in commits (commits from git, by size and by count, with role and window filters) · who is talking (your prompts vs subagent prompts vs agent replies, with the autonomy ratio) · tokens per day · all-projects table · agents and models · work rhythm · session depth.
+
+## Global filters
+
+Three controls in the sticky header apply to every card at once and to the KPIs:
+
+- **Window** — all time, or the last 90 / 45 / 30 days, anchored to the latest day with activity (not the wall clock, so the deck is stable).
+- **Sessions** — all, build, plan, or other agent types. Hours, models per day and every per-model card follow it. Day-level series that have no session role (tokens per day, work rhythm) stay unfiltered by role.
+- **Hide small entries** — under 5 commits on the commit cards, under 5 sessions on the model cards, under 5 hours for projects, under 5 active days for models per day. Totals and shares are still computed on the full set.
+
+Per-card controls (group by, metric toggles, the commit cards' plan-vs-build split and planner→builder combos, the productivity and shipping cards' build-only toggle) stay local and remember their state across filter changes. When a global session role is set, the local build-only toggles hide, because the global scope already decides.
+
+The deck ships raw records (`SESS`, one row per session; `DAYW`, `DAYM`, `DAYU`, `RHYD`, one entry per day) and derives every chart and KPI in the browser from those under the current filter (`derive()` in `template.html`). `extract.py` still writes the pre-aggregated legacy datasets to `data.json` for anyone scripting against it, but the deck no longer reads them.
 
 ## Definitions
 

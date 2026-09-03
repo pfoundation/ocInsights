@@ -41,7 +41,9 @@ Python, not the workspace default of Bun/TypeScript. Deliberate: the pipeline is
 
 `build.py` formats `meta` into KPI strings and injects each dataset as JSON. `RANGE` (start, end, window start, calendar weeks, session count) is injected too so the JS has no hard-coded dates.
 
-Dataset → card map: `HM`/`PORDER` monthly hours · `HD` daily hours · `DMODELS` models per day · `PROD` productivity · `SHIP` shipping + funnel (same records as `PROD`) · `CM` both commit cards · `UA`/`UAM` who is talking · `DTOK`/`DHRS` tokens grid · `LB`/`COST`/`DEPTH` tables · `AGENTS`/`MODELS`/`RHY` sidebar cards.
+Raw records injected into the deck: `SESS` (one row per session; columns in `SESS_COLS`, names resolved through `IDX`), `DAYW` (day → worktree → hours by role code `[all, plan, build]`), `DAYM` (day → `model|provider` → messages by role code), `DAYU` (day → your prompts / subagent prompts / replies), `RHYD` (day → 24 hourly counts), `DTOK` (day → tokens, cost, sessions), `CM` (commits with attribution), `RANGE`.
+
+Render-time derivation (`derive()` in the template) turns those into the per-card datasets under `FILTER = {win, role, small}`: `HM`/`HMR`/`PORDER` monthly hours (by project / by role) · `HD` daily hours · `DMODELS` models per day · `PROD` = `SHIP` per-model records for productivity, shipping and the funnel · `UA`/`UAM` who is talking · `DHRS` for the tokens grid · `LB`/`COST`/`DEPTH` tables · `AGENTS`/`MODELS`/`RHY` sidebar cards · `KPI` for the header. `renderAll()` clears every container (`resetDom`) and re-runs the card code; local card state survives in `UI`. `extract.py` still emits the legacy pre-aggregated datasets in `data.json`, but `build.py` only injects the raw ones.
 
 ## Data Facts and Gotchas (each of these cost real time)
 
@@ -61,6 +63,8 @@ Dataset → card map: `HM`/`PORDER` monthly hours · `HD` daily hours · `DMODEL
 - **Commit dates:** author date is used; only 1 of 753 commits in the two big repos was rebased by more than an hour. "Now" for the window filters is the latest commit, not the wall clock, so the deck is stable.
 - **CSS class collisions.** The sticky page header is `.bar`; the funnel bars had to become `.fbar`. Check `grep -c` before adding a class.
 - **SVG in Playwright:** `<text>` needs `textContent`, not `innerText`; decorative rings carry `pointer-events="none"`, so target `circle[data-s]:not([pointer-events])` when hovering.
+- **Re-render discipline.** Every card runs inside `renderAll()`. Anything that appends to the DOM must be cleared in `resetDom()`; anything that registers a listener on a persistent element must assign (`el.onclick=`) or guard (`th.dataset.tb`), never `addEventListener` unguarded, or listeners stack on each filter change. Cross-highlight extensions go in `hotHooks[name]=fn`, not by wrapping `setHot`.
+- **Session day.** A session belongs to the day of its first message for windowing; hours are still credited to the exact message day (`DAYW`). The two agree to within rounding over any window longer than a day.
 - **Template literals:** `prefix + cond ? a : b` parses as `(prefix + cond) ? a : b`. Parenthesise ternaries when concatenating (it broke a summary line once).
 
 ## Publishing
