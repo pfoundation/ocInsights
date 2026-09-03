@@ -12,7 +12,7 @@ Read `README.md` first — it holds the metric definitions. This file is about w
 make                 # extract + build + verify (~20 s)
 make extract         # python3 extract.py --out data.json      (read-only DB pass + git log)
 make build           # python3 build.py                        (data.json + template.html -> deck)
-make verify          # node verify.mjs opencode_time_full.html (headless Chromium, 43 checks)
+make verify          # node verify.mjs opencode_time_full.html (headless Chromium, 49 checks)
 make publish         # ./publish.sh                            (gh gist edit; prints rendered URL)
 make template        # tools/make_template.py — only after hand-editing a built deck
 make install-plugin  # symlink plugin/editLedger.ts into ~/.config/opencode/plugin/ (restart opencode)
