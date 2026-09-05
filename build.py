@@ -36,17 +36,28 @@ def main():
         h = h.replace(f"@@{name}@@", json.dumps(d[name], separators=(",", ":")))
 
     month_name = lambda ym: dt.date.fromisoformat(ym + "-01").strftime("%B")
+    sc = {c: i for i, c in enumerate(d["SESS_COLS"])}
+    edits = sum(r[sc["edits"]] for r in d["SESS"])
+    edit_sess = sum(1 for r in d["SESS"] if r[sc["edits"]] > 0)
+    rec_n = len(d["CM"]["recs"])
+    man_n = sum(1 for x in d["CM"]["manual"] if not x[2])
+    commit_n = rec_n + man_n
+    judged = [r for r in d["SESS"] if not r[sc["child"]] and r[sc["a"]] > 0 and r[sc["tedits"]] > 0 and r[sc["tpaths"]]]
+    shipped = [r for r in judged if r[sc["tship"]]]
     kpi = dict(
         badge=f"{m['total_hr']:.2f} h · {m['sessions']:,} sess · ${m['cost']:,.0f} · {tokens(m['fresh_tokens'])} tok",
         start=m["start"], end=m["end"], win_start=m["win_start"],
         active_days=str(m["active_days"]), span_days=str(m["span_days"]),
         total_hr=f"{m['total_hr']:.2f}", messages=f"{m['messages']:,}",
-        autonomy=f"{m['replies']/max(m['prompts_top'],1):.1f}", prompts_top=f"{m['prompts_top']:,}", replies=f"{m['replies']:,}",
+        autonomy=f"{m['replies']/max(m['prompts_top'],1):.1f}",
+        tts=f"{sum(r[sc['u']] for r in judged)/max(len(shipped),1):.1f}" if shipped else "—",
+        tjudged=f"{len(judged):,}", tshipped=f"{len(shipped):,}",
         fresh=tokens(m["fresh_tokens"]), cache_read=tokens(m["cache_read"]), cache_write=tokens(m["cache_write"]),
-        top_project=m["top_project"], top_hr=f"{m['top_hr']:.2f}", top_pct=f"{m['top_pct']:.1f}", top_sessions=f"{m['top_sessions']:,}",
+        edits=f"{edits:,}", edits_per_hr=f"{edits/max(m['total_hr'],0.01):.1f}", edits_sess=f"{edit_sess:,}",
+        commits=str(rec_n), commits_share=f"{100*rec_n/max(commit_n,1):.0f}",
+        commits_total=str(commit_n), commits_manual=str(man_n),
         cost=f"{m['cost']:,.0f}", cost_per_hr=f"{m['cost']/max(m['total_hr'],0.01):.2f}",
-        busiest_day=m["busiest_day"], busiest_hr=f"{m['busiest_hr']:.2f}", busiest_msgs=f"{m['busiest_msgs']:,}",
-        busiest_month=month_name(m["busiest_day"][:7]), peak_month_name=month_name(m["peak_month"]), peak_month_hr=f"{m['peak_month_hr']:.1f}",
+        peak_month_name=month_name(m["peak_month"]), peak_month_hr=f"{m['peak_month_hr']:.1f}",
         repos=str(m["repos"]), ship_days=str(m.get("ship_days", 7)),
         sessions=f"{m['sessions']:,}",
     )

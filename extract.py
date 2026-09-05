@@ -571,6 +571,34 @@ def main():
         PROD.append({"m": k[0], "p": k[1], "b": k[2], **{x: (round(v, 3) if isinstance(v, float) else v) for x, v in g.items()},
                      "ship_lag_med": round(lag[len(lag) // 2], 2) if lag else None})
 
+    # session trees: fold every subagent session into its top-level parent, so an orchestrator
+    # session that delegated all its edits is judged on the tree's outcome, not its own zero edits.
+    # A tree ships if any session in it shipped; it is judgeable if any session in it has paths.
+    children = defaultdict(list)
+    for sid, m in meta.items():
+        if m["parent"] and m["parent"] in meta:
+            children[m["parent"]].append(sid)
+    tree = {}
+    for sid in meta:
+        ted = teerr = tship = tpaths = 0
+        tcost = 0.0
+        stack = [sid]
+        while stack:
+            n = stack.pop()
+            stack.extend(children.get(n, ()))
+            sn = S.get(n)
+            if sn:
+                ted += sn["edits"]
+                teerr += sn["eerr"]
+            mn = meta.get(n)
+            if mn:
+                tcost += mn["cost"]
+            sh, _, pa = per_sess_ship.get(n, (0, -1, 0))
+            tship = tship or sh
+            tpaths = tpaths or pa
+        kids = sum(1 for c in children.get(sid, []) if c in S)
+        tree[sid] = (kids, ted, teerr, round(tcost, 4), tship, 0 if not ted else tpaths)
+
     # per-session rows and day-granular series: everything the deck re-derives under a window / role filter
     IDX = dict(wt=[], agent=[], model=[], prov=[], lmodel=[])
     ix = {k: {} for k in IDX}
@@ -601,12 +629,13 @@ def main():
         day = (s and s["day0"]) or day_of(m["created"])
         lines = min(m["add"] + m["dele"], LINES_CAP) if (m["has_lines"] and m["created"] < lines_cut) else -1
         sh, lag, paths = per_sess_ship.get(sid, (0, -1, 0))
+        tk, ted, tee, tco, tsh, tpa = tree[sid]
         SESS.append([day, idx("wt", m["wt"]), idx("agent", m["agent"]), role_of(m["agent"]), int(m["child"]), idx("model", model), idx("prov", prov),
                      idx("lmodel", model_label(m["model"])), round((s["ms"] if s else 0) / 3.6e6, 3), s["u"] if s else 0, s["a"] if s else 0, s["err"] if s else 0,
                      round(m["cost"], 4), m["fresh"], m["cache_r"], m["cache_w"], s["edits"] if s else 0, s["eerr"] if s else 0, len(s["files"]) if s else 0,
                      s["reads"] if s else 0, s["bash"] if s else 0, s["tools"] if s else 0, s["terr"] if s else 0, s["ver"] if s else 0, s["commit"] if s else 0,
                      lines, s["comp"] if s else 0, sh, lag, paths, m["add"], m["dele"],
-                     *phase_models(s)])
+                     *phase_models(s), tk, ted, tee, tco, tsh, tpa])
         if s:
             for r, ph in s["ph"].items():
                 if not (ph["a"] or ph["u"]):
@@ -616,7 +645,8 @@ def main():
                 PH.append([len(SESS) - 1, r, idx("model", pm[0]), idx("prov", pm[1]), round(ph["ms"] / 3.6e6, 3), ph["u"], ph["a"], ph["err"],
                            round(m["cost"] * share, 4), ph["edits"], ph["eerr"], len(ph["files"]), ph["reads"], ph["bash"], ph["tools"], ph["terr"], ph["ver"], ph["commit"]])
     SESS_COLS = ["day", "wt", "agent", "role", "child", "model", "prov", "lmodel", "hrs", "u", "a", "err", "cost", "fresh", "cacheR", "cacheW",
-                 "edits", "eerr", "files", "reads", "bash", "tools", "terr", "ver", "commit", "lines", "comp", "shipped", "lag", "paths", "add", "dele", "pm", "pp", "bm", "bp"]
+                 "edits", "eerr", "files", "reads", "bash", "tools", "terr", "ver", "commit", "lines", "comp", "shipped", "lag", "paths", "add", "dele", "pm", "pp", "bm", "bp",
+                 "kids", "tedits", "teerr", "tcost", "tship", "tpaths"]
     PH_COLS = ["sess", "role", "model", "prov", "hrs", "u", "a", "err", "cost", "edits", "eerr", "files", "reads", "bash", "tools", "terr", "ver", "commit"]
     DAYW = {d: {w: [round(v[0] / 3.6e6, 3), round(v[1] / 3.6e6, 3), round(v[2] / 3.6e6, 3)] for w, v in per.items()} for d, per in X["day_wt_role"].items()}
     DAYM = {d: dict(per) for d, per in X["models_day_role"].items()}

@@ -28,7 +28,15 @@ check("loader in static markup", /<div id="loading"[^>]*>[\s\S]*?Loading [\d,]+ 
 check("loader dismissed after first render", loaderGone);
 check("no unfilled placeholders", !(await page.content()).includes("@@"));
 check("kpi cards", (await count(".kpi")) === 6, `${await count(".kpi")} found`);
-check("monthly hours: 24 project series", (await count("#mleg .lg")) >= 20);
+check("edits and commits KPIs", parseInt((await page.locator("#k_edits").innerText()).replace(/,/g, ""), 10) > 1000
+  && parseInt(await page.locator("#k_commits").innerText(), 10) > 50);
+const secOk = await page.evaluate(() => ["time", "inputs", "output", "outcome", "projects", "method"].every((id) => !!document.getElementById(id)));
+check("section anchors", secOk);
+check("monthly hours legend capped", (await count("#mleg .lg[data-s]:visible")) === 12);
+check("monthly hours more toggle", (await page.locator("#mleg .lgmore").innerText()).includes("more"));
+await click("#mleg .lgmore");
+check("monthly hours: all series after more", (await count("#mleg .lg[data-s]:visible")) >= 20);
+await click("#mleg .lgmore");
 check("daily hours 90d", (await count("#hchart rect[data-s]")) > 50);
 check("models per day", (await count("#dchart rect[data-s]")) > 50);
 check("who is talking", (await count("#uchart rect")) > 20 && (await count("#uchart path")) === 1);
@@ -37,7 +45,6 @@ check("rhythm grid", (await count("#rhy .cell")) === 168);
 check("productivity map", (await count("#pchart circle")) > 10);
 check("shipping map + funnel", (await count("#schart circle")) > 10 && (await count("#sfun .row")) > 5);
 check("commits map", (await count("#cchart circle[data-s]:not([pointer-events])")) > 10);
-check("commits by count", (await count("#c2chart circle[data-s]:not([pointer-events])")) > 10);
 check("defaults to family grouping", (await page.locator("#pgroup [data-g=family]").getAttribute("aria-pressed")) === "true"
   && (await page.locator("#dgroup [data-g=family]").getAttribute("aria-pressed")) === "true"
   && (await count("#dleg .lg")) < 15);
@@ -68,6 +75,7 @@ check("ledger chip shown only when inactive or stale", (await page.locator("#k_l
 // global filters: window, session role, hide-small — every card must follow
 const snap = async () => ({
   total: await page.locator("#k_total").innerText(), badge: await page.locator("#k_badge").innerText(),
+  edits: await page.locator("#k_edits").innerText(), commitsK: await page.locator("#k_commits").innerText(),
   months: await count("#mchart rect[data-s]"), daily: await count("#hchart rect[data-s]"), models: await count("#dchart rect[data-s]"),
   prod: await count("#pchart circle"), ship: await count("#schart circle"), commits: await count("#cchart circle[data-s]:not([pointer-events])"),
   who: await count("#uchart rect"), tokens: await count("#tcal .cell:visible"), rows: await count("#tb tr"), csum: await page.locator("#csum").innerText(),
@@ -75,9 +83,13 @@ const snap = async () => ({
 });
 const all = await snap();
 await click('#gwin [data-w="30"]'); const w30 = await snap();
-check("30-day window changes KPIs", w30.total !== all.total && w30.badge !== all.badge);
+check("30-day window changes KPIs", w30.total !== all.total && w30.badge !== all.badge && w30.edits !== all.edits);
 check("30-day window moves every card", w30.months < all.months && w30.daily < all.daily && w30.models < all.models && w30.tokens < all.tokens && w30.commits <= all.commits && w30.cov < all.cov && w30.csum.includes("last 30 days"));
 check("filter chip and reset shown", (await page.locator("#gchip").innerText()).includes("last 30 days") && (await page.locator("#greset").isVisible()));
+await click('#gwin [data-w="7"]'); const w7 = await snap();
+check("7-day window changes KPIs", w7.total !== w30.total && w7.badge !== w30.badge);
+check("7-day chip", (await page.locator("#gchip").innerText()).includes("last 7 days"));
+await click('#gwin [data-w="30"]');
 await click("#prole [data-r=off]");
 check("local build toggle visible when role is off", await page.locator("#pscope").isVisible());
 await click('#grole [data-r="plan"]'); const plan = await snap();
@@ -87,7 +99,7 @@ await click("#greset");
 await click("#prole [data-r=combo]"); const back = await snap();
 check("reset restores everything", back.total === all.total && back.months === all.months && back.commits === all.commits && (await page.locator("#greset").isHidden()));
 await click("#gsmall"); const small = await snap();
-check("hide small entries", small.commits < all.commits && small.rows <= all.rows && (await page.locator("#gchip").innerText()).includes("small entries hidden")); await click("#gsmall");
+check("hide small entries", small.commits < all.commits && small.rows <= all.rows && (await page.locator("#gchip").innerText()).includes("small hidden")); await click("#gsmall");
 await click("#mrole"); check("monthly hours stacked by role", (await page.locator("#mleg .lg").allInnerTexts()).join(" ").includes("build")); await click("#mrole");
 const mRects = await count("#mchart rect[data-s]");
 await click("#mmode"); check("monthly hours share view", (await page.locator("#mchart text").evaluateAll((ts) => ts.map((t) => t.textContent))).some((t) => t.endsWith("%")) && (await count("#mchart rect[data-s]")) === mRects); await click("#mmode");
@@ -108,7 +120,11 @@ check("planner→builder combos", (await count("#cchart circle[pointer-events=no
 check("commit combos keep cross-model pairs (planner ≠ builder)", (await page.locator("#ctb tr td:first-child").allInnerTexts()).some((t) => { const [a, b] = t.split("→").map((s) => s.trim()); return a && b && a !== b; }));
 check("commit combos cover most windows, not only separate plan sessions", parseInt((await page.locator("#csum").innerText()).match(/(\d+) commits/)[1]) > 300);
 await click("#crole [data-r=off]"); await click("#crole [data-r=split]"); await click("#crole [data-r=combo]");
-await click("#c2role [data-r=off]"); await click("#c2role [data-r=split]"); await click("#c2role [data-r=combo]");
+await click("#cy [data-y=count]");
+check("commits y-axis count", (await page.locator("#cchart text").evaluateAll((ts) => ts.map((t) => t.textContent))).includes("Commits attributed"));
+await click("#crankm [data-rk=count]");
+check("rank by commits shipped", (await page.locator("#crankt").innerText()) === "Commits shipped");
+await click("#cy [data-y=lines]"); await click("#crankm [data-rk=hpc]");
 const famLeg = await count("#dleg .lg");
 await click("#dgroup [data-g=model]"); const modelLeg = await count("#dleg .lg");
 await click("#dgroup [data-g=provider]"); const provLeg = await count("#dleg .lg");
@@ -116,15 +132,76 @@ check("models grouped by provider", provLeg < modelLeg && provLeg < 12, `family 
 await click("#dgroup [data-g=family]");
 await click("#pmetric [data-y=epd]"); check("edits per dollar view", (await page.locator("#psum").innerText()).includes("zero-cost")); await click("#pmetric [data-y=eph]");
 await click("#theme"); check("theme toggle", (await page.locator("#theme").innerText()) === "Dark" || (await page.locator("#theme").innerText()) === "Light"); await click("#theme");
-await click("#showall"); check("session depth show all", (await count("#db tr")) >= 20);
+check("projects table merged columns", (await count("#lbt thead th")) === 16 && (await count("#tb tr")) >= 20);
 const firstBefore = await page.locator("#tb tr").first().innerText();
 await click("#lbt th.sortable[data-k='4']"); await click("#lbt th.sortable[data-k='4']");
 check("table sorting", (await page.locator("#tb tr").first().innerText()) !== firstBefore);
+
+// human turns to ship: strips by default, radar behind a toggle
+check("turns strips", (await count("#tstrips circle[data-s]")) > 20);
+await click("#tscale [data-s=minmax]");
+await click("#torient [data-o=raw]");
+const sLo = parseFloat(await page.locator('#tstrips text[data-tick="0-min"]').textContent()), sHi = parseFloat(await page.locator('#tstrips text[data-tick="0-max"]').textContent());
+check("turns orientation raw", sLo < sHi);
+await click("#torient [data-o=better]");
+const bLo = parseFloat(await page.locator('#tstrips text[data-tick="0-min"]').textContent()), bHi = parseFloat(await page.locator('#tstrips text[data-tick="0-max"]').textContent());
+const cLo = parseFloat(await page.locator('#tstrips text[data-tick="5-min"]').textContent()), cHi = parseFloat(await page.locator('#tstrips text[data-tick="5-max"]').textContent());
+check("turns orientation better-right", bLo > bHi && cLo > cHi);
+const evW = await page.locator('#tstrips text[data-tick="0-min"]').textContent();
+await click("#tev [data-e=raw]");
+check("turns evidence toggle", (await page.locator('#tstrips text[data-tick="0-min"]').textContent()) !== evW);
+await click("#tev [data-e=weighted]");
+check("turns weighted note", (await page.locator("#snote").innerText()).includes("k = 10"));
+await click("#tscale [data-s=relative]");
+check("turns relative ticks", (await count('#tstrips text[data-tick^="0-r"]')) >= 1 && (await page.locator('#tstrips text[data-tick="0-r0"]').textContent()) === "pool");
+const poolRel = await count("#tstrips line[data-pool]");
+await click("#tscale [data-s=minmax]");
+const poolMin = await count("#tstrips line[data-pool]");
+await click("#tscale [data-s=relative]");
+check("turns pool lines", poolRel === 6 && poolMin === 0);
+const emphs = await page.locator("#tstrips circle[data-s]").evaluateAll((cs) => cs.map((c) => parseFloat(c.style.opacity)));
+check("turns emphasis by core", emphs.some((o) => o === 1) && emphs.some((o) => o < 0.5) && emphs.every((o) => o >= 0.28 && o <= 1));
+await page.locator("#tstrips circle[data-s]").first().hover({ force: true }); await page.waitForTimeout(120);
+check("turns connector lines", (await count("#tstrips path[data-line]")) >= 3 && (await count("#tstrips path.hot")) === 1);
+await page.mouse.move(5, 5);
+await click("#tview [data-v=radar]");
+check("turns view toggle", await page.locator("#tradarw").isVisible() && await page.locator("#tstripsw").isHidden());
+check("turns rank", (await count("#trank .row")) > 3);
+check("turns radar", (await count("#rchart path[data-s]")) >= 3 && (await count("#rchart circle[data-s]")) >= 12);
+check("turns table", (await count("#ttb tr")) > 3);
+const tsum0 = await page.locator("#tsum").innerText();
+await click("#tmetric [data-m=tpe10]");
+check("turns metric toggle", (await page.locator("#tsum").innerText()) !== tsum0 && (await page.locator("#tsum").innerText()).includes("turns per 10 shipped edits"));
+await click("#tmetric [data-m=tts]");
+await click("#trole [data-r=off]"); await click("#trole [data-r=split]");
+check("turns role split", (await count("#ttb tr")) > 0 && (await page.locator("#tsum").innerText()).includes("by phase"));
+await click("#trole [data-r=combo]");
+const tRows0 = await count("#ttb tr");
+await click("#gsmall");
+check("turns hide small", (await count("#ttb tr")) < tRows0);
+await click("#gsmall");
+const tsumAll = await page.locator("#tsum").innerText();
+await click('#gwin [data-w="30"]');
+check("turns card follows window", (await page.locator("#tsum").innerText()) !== tsumAll);
+await click("#greset");
+check("turns primary sector", (await count("#rchart path[data-sector]")) === 1);
+check("turns core column", (await count("#ttable thead th")) === 13 && /\d/.test(await page.locator("#ttb tr td:nth-child(7)").first().innerText()));
+const tJudged = await page.locator("#ttb tr td:nth-child(2)").evaluateAll((tds) => tds.map((t) => parseInt(t.innerText)));
+check("turns default sort judged", tJudged.length > 3 && tJudged.every((v, i) => i === 0 || v <= tJudged[i - 1]));
+check("turns KPI", (await page.locator(".kpis .ctitle").allInnerTexts()).includes("Human turns to ship") && /^\d+\.\d$/.test((await page.locator("#k_tts").innerText()).trim()));
+check("human turn labels", (await page.locator("#pmetric [data-y=epp]").innerText()) === "Edits per your turn" && (await page.locator("#sx [data-x=pph]").innerText()) === "Turns per hour");
+await click("#torient [data-o=raw]");
+check("turns radar raw mode", (await page.locator("#rnote").innerText()).includes("mirrored so outward is more"));
+await click("#torient [data-o=better]");
 
 // tooltips
 await page.evaluate(() => document.getElementById("cchart").scrollIntoView({ block: "center" }));
 await page.locator("#cchart circle[data-s]:not([pointer-events])").first().hover(); await page.waitForTimeout(120);
 check("commit tooltip", (await page.locator("#tip").innerText()).includes("Hours per commit"));
+await page.evaluate(() => document.getElementById("rchart").scrollIntoView({ block: "center" }));
+await page.locator("#rchart circle[data-s]").first().hover({ force: true }); await page.waitForTimeout(120);
+check("turns radar tooltip", (await page.locator("#tip").innerText()).includes("Turns to ship"));
+await click("#tview [data-v=strips]");
 await page.mouse.move(5, 5); await page.keyboard.press("Escape");
 check("escape hides tooltip", await page.locator("#tip").isHidden());
 check("no console errors after interaction", errors.length === 0, errors.join(" | ").slice(0, 300));

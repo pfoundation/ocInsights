@@ -1,0 +1,15 @@
+{
+  "name": "oc-productivity",
+  "version": "0.1.0",
+  "description": "OpenCode plugin: live productivity data over HTTP, plus the edit ledger",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    ".": "./plugin/index.ts",
+    "./rpc": "./plugin/rpc.ts"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "beta"
+  }
+}
