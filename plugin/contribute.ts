@@ -17,7 +17,9 @@ import { getData } from "./extract.ts";
 export const CONTRIB_SCHEMA = 1;
 
 // Auto-send cadence, shared by the scheduler and the status computation.
-export const FIRST_DELAY_MS = 3 * 60 * 1000;
+// FIRST_DELAY is the first-install grace window: nothing auto-sends until
+// 15 min after load, so a new user has time to turn contribution off.
+export const FIRST_DELAY_MS = 15 * 60 * 1000;
 export const SEND_INTERVAL_MS = 6 * 3600 * 1000;
 export const QUIET_MS = 10 * 60 * 1000;
 export const FAIL_BACKOFF_MS = 3600 * 1000;

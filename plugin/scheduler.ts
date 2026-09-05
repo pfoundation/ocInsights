@@ -1,5 +1,6 @@
-// Auto-contribute scheduler: one ticking loop per process. First send ~3 min
-// after load when quiet; then every 6 h. Quiet = no session activity for
+// Auto-contribute scheduler: one ticking loop per process. First send ~15 min
+// after load when quiet (first-install grace so the user can opt out);
+// then every 6 h. Quiet = no session activity for
 // 10 min, tracked from the event stream. Cross-process coordination is the
 // contributed.json lastSent on disk (sends are idempotent anyway).
 //

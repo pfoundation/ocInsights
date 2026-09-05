@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Auto-contribute: first send waits ~15 min after load (was ~3 min), giving new installs time to opt out before any data leaves the machine
+
 ## 26.9.0
 
 - Renamed from ocProductivity to ocInsights (`@pfoundation/ocinsights` on npm)

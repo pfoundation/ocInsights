@@ -41,7 +41,7 @@ export default Plugin.define({
     const resolved = resolveContribute(ctx.options);
     console.log(
       `[oc.insights] contributions ${resolved.enabled ? "on" : "off"} (source: ${resolved.source})` +
-        (resolved.enabled ? ", first check in ~3 min" : ""),
+        (resolved.enabled ? ", first check in ~15 min" : ""),
     );
     const ledgerDispose = await setupLedger(ctx);
     try {
