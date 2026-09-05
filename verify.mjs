@@ -138,6 +138,7 @@ await click("#lbt th.sortable[data-k='4']"); await click("#lbt th.sortable[data-
 check("table sorting", (await page.locator("#tb tr").first().innerText()) !== firstBefore);
 
 // human turns to ship: strips by default, radar behind a toggle
+await click("#tview [data-v=strips]");
 check("turns strips", (await count("#tstrips circle[data-s]")) > 20);
 await click("#tscale [data-s=minmax]");
 await click("#torient [data-o=raw]");
@@ -202,6 +203,16 @@ await page.evaluate(() => document.getElementById("rchart").scrollIntoView({ blo
 await page.locator("#rchart circle[data-s]").first().hover({ force: true }); await page.waitForTimeout(120);
 check("turns radar tooltip", (await page.locator("#tip").innerText()).includes("Turns to ship"));
 await click("#tview [data-v=strips]");
+
+// overall score card: same factory, ten axes, ranked by score
+const ov = await page.locator("#orank .row > span:last-child").evaluateAll((es) => es.map((e) => parseFloat(e.innerText)));
+check("overall rank", ov.length > 3 && ov.every((v, i) => i === 0 || v <= ov[i - 1]));
+await click("#oview [data-v=strips]");
+check("overall strips", (await count("#ostrips line[data-pool]")) === 10);
+await click("#oview [data-v=radar]");
+check("overall radar", (await count("#ochart line")) === 10);
+await click("#oview [data-v=strips]");
+check("overall table", (await count("#otable thead th")) === 14);
 await page.mouse.move(5, 5); await page.keyboard.press("Escape");
 check("escape hides tooltip", await page.locator("#tip").isHidden());
 check("no console errors after interaction", errors.length === 0, errors.join(" | ").slice(0, 300));

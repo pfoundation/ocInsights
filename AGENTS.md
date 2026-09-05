@@ -12,7 +12,7 @@ Read `README.md` first — it holds the metric definitions. This file is about w
 make                 # extract + build + verify (~20 s)
 make extract         # python3 extract.py --out data.json      (read-only DB pass + git log)
 make build           # python3 build.py                        (data.json + template.html -> deck)
-make verify          # node verify.mjs opencode_time_full.html (headless Chromium, 82 checks)
+make verify          # node verify.mjs opencode_time_full.html (headless Chromium, 87 checks)
 make publish         # ./publish.sh                            (gh gist edit; prints rendered URL)
 make template        # tools/make_template.py — only after hand-editing a built deck
 make install-plugin  # bun install + add this repo to global plugins; removes old editLedger.ts symlink
@@ -33,7 +33,7 @@ Python, not the workspace default of Bun/TypeScript, for `extract.py` / `build.p
 
 - 4-space Python, `from __future__ import annotations`, stdlib only. Config constants live at the top of `extract.py` with a comment each; do not scatter magic numbers.
 - Plugin TypeScript is 2-space, matching the OpenCode plugin examples. Keep `@opencode-ai/plugin` as a runtime dependency (RPC). The HTTP server is a process-wide singleton (`plugin/server.ts`); do not listen in every location's `setup`.
-- Template JS is dense by design (one file, no build step). Each chart is an IIFE or a factory (`stacked()`, `commitsCard()`); shared helpers are `bindTip`, `row`, `makeSortable`, `setHot`, `fmtT`. Reuse them.
+- Template JS is dense by design (one file, no build step). Each chart is an IIFE or a factory (`stacked()`, `commitsCard()`, `profileCard()` for the turns and overall cards, configured by a `*_CFG` object); shared helpers are `bindTip`, `row`, `makeSortable`, `setHot`, `fmtT`. Reuse them.
 - Placeholders in `template.html` are `@@NAME@@`. Data constants are `const NAME=@@NAME@@;`. `build.py` asserts none are left unfilled; `publish.sh` refuses to ship a file containing `@@`.
 - Design language is the PF Console one (`~/dev/datastudio/.design-sync/conventions.md`): everything square (`border-radius:0` is enforced globally), burnt-amber primary, semantic tokens, IBM Plex Sans for copy and Inconsolata for every machine value, sentence case, no emoji. Charts use `--chart-1..5` and family hues; nothing neon.
 
