@@ -1,4 +1,4 @@
-// Port of build.py: data.json + template.html -> HTML string. Formatting only.
+// data.json + template.html -> HTML string. Formatting only.
 import { readFile } from "node:fs/promises";
 import { TEMPLATE } from "./config.ts";
 
@@ -15,6 +15,8 @@ const JSON_KEYS = [
   "IDX",
   "PH",
   "PH_COLS",
+  "CYC",
+  "CYC_COLS",
   "PSRC",
   "LEDGER",
 ] as const;
@@ -77,9 +79,11 @@ function weeksBetween(start: string, end: string): number {
 
 export async function renderDeck(
   data: Record<string, unknown>,
+  templatePath = TEMPLATE,
+  live = false,
 ): Promise<string> {
   const m = data.meta as Meta;
-  let h = await readFile(TEMPLATE, "utf8");
+  let h = await readFile(templatePath, "utf8");
   const payload: Record<string, unknown> = {
     ...data,
     RANGE: {
@@ -133,17 +137,21 @@ export async function renderDeck(
   kpi.commits_share = ((100 * recN) / Math.max(commitN, 1)).toFixed(0);
   kpi.commits_total = String(commitN);
   kpi.commits_manual = String(manN);
-  const judged = sess.filter(
-    (r) =>
-      !r[cols.child] &&
-      Number(r[cols.a] ?? 0) > 0 &&
-      Number(r[cols.tedits] ?? 0) > 0 &&
-      r[cols.tpaths],
+  const cyc = data.CYC as unknown[][];
+  const ccols = Object.fromEntries(
+    (data.CYC_COLS as string[]).map((c, i) => [c, i]),
   );
-  const shipped = judged.filter((r) => r[cols.tship]);
+  const judged = cyc.filter(
+    (c) =>
+      !sess[Number(c[ccols.sess] ?? 0)]?.[cols.child] &&
+      Number(c[ccols.a] ?? 0) > 0 &&
+      Number(c[ccols.tedits] ?? 0) > 0 &&
+      c[ccols.tpaths],
+  );
+  const shipped = judged.filter((c) => c[ccols.tship]);
   kpi.tts = shipped.length
     ? (
-        judged.reduce((a, r) => a + Number(r[cols.u] ?? 0), 0) / shipped.length
+        judged.reduce((a, c) => a + Number(c[ccols.u] ?? 0), 0) / shipped.length
       ).toFixed(1)
     : "—";
   kpi.tjudged = commas(judged.length);
@@ -151,6 +159,9 @@ export async function renderDeck(
   for (const [k, v] of Object.entries(kpi)) {
     h = h.replaceAll(`@@${k}@@`, v);
   }
+  // The Contribute button only exists on the live server; the gist snapshot
+  // (and file://) hides it — there is no local endpoint to post to.
+  h = h.replaceAll("@@LIVE@@", live ? "" : 'style="display:none"');
   const left = h.match(/@@[a-zA-Z_]+@@/g);
   if (left)
     throw new Error(

@@ -1,11 +1,11 @@
-// Spawn extract.py on request, coalesce concurrent runs, cache on disk.
+// Run the metric extract in a Bun Worker (subprocess fallback), coalesce, cache on disk.
 import { spawn } from "node:child_process";
 import { mkdir, readFile, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
   CACHE_PATH,
+  CLI_TS,
   DEFAULT_TTL_MS,
-  EXTRACT_PY,
   EXTRACT_TIMEOUT_MS,
   REPO_ROOT,
 } from "./config.ts";
@@ -15,10 +15,13 @@ type Cache = {
   at: number;
 };
 
+export type ExtractRunner = "worker" | "subprocess" | null;
+
 let cache: Cache | null = null;
 let inflight: Promise<Cache> | null = null;
 let extracting = false;
 let lastError: string | null = null;
+let lastRunner: ExtractRunner = null;
 let ttlMs = DEFAULT_TTL_MS;
 
 export function configureExtract(opts: { ttlMs?: number }): void {
@@ -52,6 +55,7 @@ export function extractStatus(): {
   error: string | null;
   cache: string;
   ttl_ms: number;
+  runner: ExtractRunner;
 } {
   const meta = cache ? metaOf(cache.data) : { generated: null, sessions: null };
   return {
@@ -64,6 +68,7 @@ export function extractStatus(): {
     error: lastError,
     cache: CACHE_PATH,
     ttl_ms: ttlMs,
+    runner: lastRunner,
   };
 }
 
@@ -86,12 +91,73 @@ export async function peekCache(): Promise<void> {
   cache = await loadDisk();
 }
 
-function runExtract(): Promise<Cache> {
-  extracting = true;
-  const started = Date.now();
-  console.log("[oc.productivity] extract started");
+function bunBin(): string {
+  if (process.env.OC_BUN) return process.env.OC_BUN;
+  if (typeof Bun !== "undefined" && typeof Bun.which === "function") {
+    return Bun.which("bun") ?? "bun";
+  }
+  return "bun";
+}
+
+type WorkerMsg = { ok?: boolean; summary?: string; error?: string };
+
+function runWorker(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn("python3", [EXTRACT_PY, "--out", CACHE_PATH], {
+    let settled = false;
+    let gotMessage = false;
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        worker.terminate();
+      } catch {
+        /* already gone */
+      }
+      if (err) reject(err);
+      else resolve();
+    };
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("./metrics/worker.ts", import.meta.url).href);
+    } catch (err) {
+      reject(
+        Object.assign(err instanceof Error ? err : new Error(String(err)), {
+          loadFailure: true,
+        }),
+      );
+      return;
+    }
+    lastRunner = "worker";
+    const timer = setTimeout(() => {
+      finish(new Error("extract timed out"));
+    }, EXTRACT_TIMEOUT_MS);
+    worker.addEventListener("error", (ev) => {
+      const msg = ev instanceof ErrorEvent ? ev.message : String(ev);
+      finish(
+        Object.assign(new Error(msg || "worker error"), {
+          loadFailure: !gotMessage,
+        }),
+      );
+    });
+    worker.addEventListener("message", (ev: MessageEvent<WorkerMsg>) => {
+      gotMessage = true;
+      const msg = ev.data;
+      if (msg && msg.ok) {
+        if (msg.summary) console.log(`[oc.productivity] ${msg.summary}`);
+        finish();
+        return;
+      }
+      finish(new Error(msg?.error || "extract failed"));
+    });
+    worker.postMessage({ out: CACHE_PATH });
+  });
+}
+
+function runSubprocess(): Promise<void> {
+  lastRunner = "subprocess";
+  return new Promise((resolve, reject) => {
+    const child = spawn(bunBin(), [CLI_TS, "extract", "--out", CACHE_PATH], {
       cwd: REPO_ROOT,
       env: process.env,
     });
@@ -102,7 +168,7 @@ function runExtract(): Promise<Cache> {
     });
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
-      reject(new Error("extract.py timed out"));
+      reject(new Error("extract timed out"));
     }, EXTRACT_TIMEOUT_MS);
     child.on("error", (err) => {
       clearTimeout(timer);
@@ -111,25 +177,43 @@ function runExtract(): Promise<Cache> {
     child.on("close", (code) => {
       clearTimeout(timer);
       if (code === 0) {
-        void loadDisk().then((disk) => {
-          if (!disk) {
-            reject(new Error("extract.py wrote no cache"));
-            return;
-          }
-          console.log(
-            `[oc.productivity] extract done in ${Date.now() - started}ms`,
-          );
-          resolve(disk);
-        }, reject);
+        resolve();
         return;
       }
-      reject(
-        new Error(stderr.trim() || `extract.py exited ${code ?? "unknown"}`),
-      );
+      reject(new Error(stderr.trim() || `extract exited ${code ?? "unknown"}`));
     });
-  }).finally(() => {
-    extracting = false;
-  }) as Promise<Cache>;
+  });
+}
+
+function runExtract(): Promise<Cache> {
+  extracting = true;
+  const started = Date.now();
+  console.log("[oc.productivity] extract started");
+  return (
+    typeof Worker === "undefined"
+      ? runSubprocess()
+      : runWorker().catch((err: Error & { loadFailure?: boolean }) => {
+          if (err.loadFailure) {
+            console.warn(
+              "[oc.productivity] worker failed to load, falling back to bun subprocess",
+              err.message,
+            );
+            return runSubprocess();
+          }
+          throw err;
+        })
+  )
+    .then(() => loadDisk())
+    .then((disk) => {
+      if (!disk) throw new Error("extract wrote no cache");
+      console.log(
+        `[oc.productivity] extract done in ${Date.now() - started}ms`,
+      );
+      return disk;
+    })
+    .finally(() => {
+      extracting = false;
+    });
 }
 
 async function getCache(refresh: boolean): Promise<Cache> {

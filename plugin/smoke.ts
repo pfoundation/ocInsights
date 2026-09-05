@@ -1,4 +1,4 @@
-// Prove the HTTP singleton binds and /health answers. Does not run extract.py.
+// Prove the HTTP singleton binds and /health answers. Does not run extract.
 import { clientHost, DEFAULT_HOST, DEFAULT_PORT } from "./config.ts";
 import { ensureServer, health, stopServer } from "./server.ts";
 

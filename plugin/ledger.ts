@@ -10,22 +10,13 @@
 //            "dir":"/home/ubuntu/dev/x","file":"/abs/path","tool":"edit"}
 //
 // `call` is the tool call id. opencode instantiates a plugin once per location, so a hook
-// may fire more than once per edit; extract.py dedupes on `call`.
+// may fire more than once per edit; extract dedupes on `call`.
 import type { Plugin } from "@opencode-ai/plugin";
 import { appendFile, mkdir } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
-import { homedir } from "node:os";
+import { dirname, isAbsolute, resolve } from "node:path";
+import { EDIT_TOOLS, LEDGER_PATH } from "./metrics/config.ts";
 
-const EDIT_TOOLS = new Set([
-  "edit",
-  "write",
-  "apply_patch",
-  "multiedit",
-  "patch",
-]);
-const LEDGER =
-  process.env.OC_EDIT_LEDGER ??
-  join(homedir(), ".local", "share", "ocProductivity", "edits.jsonl");
+const LEDGER = LEDGER_PATH;
 const PATCH_FILE_RE = /^\*\*\* (?:Add|Update|Delete) File: (.+?)\s*$/gm;
 
 let ready: Promise<void> | null = null;

@@ -1,8 +1,9 @@
 // oc.productivity — live HTTP for the extract payload, plus the edit ledger.
 //
 // Plugin API: opencode 1.18+ / 0.0.0-beta loads `export default Plugin.define({ id, setup })`.
-// Plugins are instantiated once per location; the HTTP server is a process-wide singleton.
-// extract.py is spawned on request (cached); setup never runs the 15 s pass.
+// Plugins are instantiated once per location; the HTTP server and the contribute
+// scheduler are process-wide singletons.
+// Extract runs in a Bun Worker on request (cached); setup never runs the pass.
 //
 // Install:  make install-plugin
 // Live:     http://127.0.0.1:4173/           (deck)
@@ -18,7 +19,14 @@ import {
 } from "./config.ts";
 import { configureExtract, getData } from "./extract.ts";
 import { setupLedger } from "./ledger.ts";
-import { Productivity } from "./rpc.ts";
+import {
+  loadContributor,
+  resolveContribute,
+  runContribute,
+  setContributeEnabled,
+} from "./contribute.ts";
+import { Productivity, type ContribEventName } from "./rpc.ts";
+import { getStatus, startScheduler, stopScheduler } from "./scheduler.ts";
 import { ensureServer, health } from "./server.ts";
 
 export default Plugin.define({
@@ -29,11 +37,102 @@ export default Plugin.define({
     });
     const port = readNum(ctx.options.port, DEFAULT_PORT);
     const host = readHost(ctx.options.host, DEFAULT_HOST);
+    loadContributor();
+    const resolved = resolveContribute(ctx.options);
+    console.log(
+      `[oc.productivity] contributions ${resolved.enabled ? "on" : "off"} (source: ${resolved.source})` +
+        (resolved.enabled ? ", first check in ~3 min" : ""),
+    );
     const ledgerDispose = await setupLedger(ctx);
     try {
       await ensureServer({ port, host });
     } catch (err) {
       console.error("[oc.productivity] http server failed", err);
+    }
+    let emit:
+      | ((
+          name: ContribEventName,
+          data: Record<string, unknown>,
+        ) => Promise<void>)
+      | null = null;
+    const safeEmit = async (
+      name: ContribEventName,
+      data: Record<string, unknown>,
+    ) => {
+      try {
+        await emit?.(name, data);
+      } catch (err) {
+        console.error("[oc.productivity] event emit failed", err);
+      }
+    };
+    let toolDispose: (() => void) | undefined;
+    try {
+      const toolReg = await ctx.tool.transform((ed) => {
+        ed.add({
+          name: "productivity_contribute",
+          description:
+            "Manage anonymous contribution of per-cycle model stats to the global Pragmatikos scorecard: status, enable, disable, or send now. Only 20 numeric/model fields per cycle ever leave the machine.",
+          input: {
+            type: "object",
+            properties: {
+              action: {
+                type: "string",
+                enum: ["status", "enable", "disable", "send"],
+              },
+            },
+            required: ["action"],
+          } as const,
+          execute: async (input) => {
+            const action = (input as { action?: string }).action;
+            if (action === "enable" || action === "disable") {
+              const on = action === "enable";
+              const before = resolveContribute(ctx.options);
+              if (before.source === "env" || before.source === "options") {
+                return {
+                  content: `Contributions are forced ${before.enabled ? "on" : "off"} by ${before.source === "env" ? "OC_PRODUCTIVITY_CONTRIBUTE" : "plugin options"}; change that instead.`,
+                };
+              }
+              setContributeEnabled(on);
+              await safeEmit("settings", { enabled: on });
+              return {
+                content: `Contributions ${on ? "enabled" : "disabled"}.`,
+              };
+            }
+            if (action === "send") {
+              const r = await runContribute({ dryRun: false, refresh: false });
+              if (r.ok && r.sent > 0) {
+                await safeEmit("contributed", {
+                  rows: r.sent,
+                  total: r.rows,
+                  snapshot: r.snapshot ?? "",
+                  auto: false,
+                });
+                return {
+                  content: `Sent ${r.sent} of ${r.rows} cycles (snapshot ${r.snapshot}).`,
+                };
+              }
+              return {
+                content: r.ok
+                  ? `Nothing to send: all ${r.rows} cycles already contributed.`
+                  : `Send failed: ${r.error ?? "unknown"}.`,
+              };
+            }
+            const st = getStatus();
+            return {
+              content:
+                `Contributions ${st.enabled ? "on" : "off"} (source: ${st.source}). ` +
+                `Last sent: ${st.lastSent ?? "never"}. Rows: ${st.rowsTotal}. ` +
+                `Next due: ${st.nextDue ?? "—"}.${st.parked ? " Auto-send parked until restart." : ""}`,
+            };
+          },
+        });
+      });
+      await ctx.tool.reload().catch(() => {});
+      toolDispose = () => {
+        void toolReg.dispose();
+      };
+    } catch (err) {
+      console.error("[oc.productivity] tool register failed", err);
     }
     let rpcDispose: (() => void) | undefined;
     try {
@@ -50,6 +149,17 @@ export default Plugin.define({
           extracting: h.extracting,
           error: h.error ?? "",
           cache: h.cache,
+        };
+      };
+      const rpcStatus = () => {
+        const st = getStatus();
+        return {
+          enabled: st.enabled,
+          source: st.source,
+          lastSent: st.lastSent ?? "",
+          rowsTotal: st.rowsTotal,
+          nextDue: st.nextDue ?? "",
+          parked: st.parked,
         };
       };
       const registration = await ctx.rpc.register(Productivity, {
@@ -71,14 +181,68 @@ export default Plugin.define({
             extracting: h.extracting,
           };
         },
+        contribute: async (input) => {
+          const args = (input ?? {}) as {
+            dryRun?: boolean;
+            refresh?: boolean;
+          };
+          const r = await runContribute({
+            dryRun: Boolean(args.dryRun),
+            refresh: Boolean(args.refresh),
+          });
+          const out: Record<string, unknown> = {
+            ok: r.ok,
+            dryRun: r.dryRun,
+            install: r.install,
+            rows: r.rows,
+            changed: r.changed,
+            sent: r.sent,
+            dayMin: r.dayMin,
+            dayMax: r.dayMax,
+            models: r.models,
+          };
+          if (r.status !== undefined) out.status = r.status;
+          if (r.snapshot !== undefined) out.snapshot = r.snapshot;
+          if (r.error !== undefined) out.error = r.error;
+          if (r.ok && !r.dryRun && r.sent > 0) {
+            await safeEmit("contributed", {
+              rows: r.sent,
+              total: r.rows,
+              snapshot: r.snapshot ?? "",
+              auto: false,
+            });
+          }
+          return out;
+        },
+        contributeStatus: async () => rpcStatus(),
+        setContribute: async (input) => {
+          const on = Boolean(
+            (input as { enabled?: boolean } | undefined)?.enabled,
+          );
+          const before = resolveContribute(ctx.options);
+          if (before.source === "env" || before.source === "options") {
+            return rpcStatus();
+          }
+          setContributeEnabled(on);
+          await safeEmit("settings", { enabled: on });
+          return rpcStatus();
+        },
       });
+      emit = (name, data) => registration.events.emit(name, data);
       rpcDispose = () => {
         void registration.dispose();
       };
     } catch (err) {
       console.error("[oc.productivity] rpc register failed", err);
     }
+    const stopSchedulerFn = startScheduler({
+      emit: (name, data) => safeEmit(name, data),
+      subscribe: ctx.event?.subscribe,
+      options: ctx.options,
+    });
     return () => {
+      stopSchedulerFn();
+      toolDispose?.();
       ledgerDispose();
       rpcDispose?.();
     };

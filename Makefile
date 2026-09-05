@@ -1,10 +1,10 @@
-.PHONY: all extract build verify publish clean template install-plugin ledger smoke smoke-http serve
+.PHONY: all extract build verify publish clean template install-plugin ledger smoke smoke-http serve typecheck contribute contribute-preview
 all: extract build verify        ## regenerate the deck from the live database and smoke-test it
 install-plugin:                   ## add this repo to global opencode plugins (restart opencode after)
 	mkdir -p ~/.local/share/ocProductivity
 	bun install
 	rm -f ~/.config/opencode/plugin/editLedger.ts
-	python3 tools/install_plugin.py $(CURDIR)
+	bun plugin/cli.ts install $(CURDIR)
 	@echo "restart opencode: opencode2 service restart"
 ledger:                           ## show what the edit ledger has collected so far, and whether opencode is loading the plugin
 	@f=$${OC_EDIT_LEDGER:-$$HOME/.local/share/ocProductivity/edits.jsonl}; [ -f "$$f" ] && { echo "$$f: $$(wc -l <"$$f") edits, $$(grep -o '"session":"[^"]*"' "$$f" | sort -u | wc -l) sessions"; tail -3 "$$f"; } || echo "no ledger yet (run make install-plugin, then restart opencode)"
@@ -14,19 +14,27 @@ smoke:                            ## prove the ledger hook records: one write in
 	mkdir -p $$d && cd $$d && rm -f hello.txt && opencode2 run --agent build --model xai/grok-4.6 "Use the write tool to create hello.txt containing the single word hi. Do nothing else, do not run any commands." >/dev/null 2>&1; \
 	[ -f $$d/hello.txt ] || { echo "opencode did not write $$d/hello.txt"; exit 1; }; \
 	m=$$(grep -c "$$d/hello.txt" "$$f" 2>/dev/null || echo 0); [ "$$m" -gt "$$n" ] && { echo "plugin ok: $$(tail -1 "$$f" | cut -c1-160)"; } || { echo "plugin did not record the edit — run make ledger"; exit 1; }
-smoke-http:                       ## prove the HTTP singleton binds and /health answers (does not run extract.py)
+smoke-http:                       ## prove the HTTP singleton binds and /health answers (does not run extract)
 	bun plugin/smoke.ts
 serve:                            ## run the HTTP server without OpenCode (http://127.0.0.1:4173/)
 	bun plugin/serve.ts
 extract:                          ## opencode.db + git repos -> data.json (~15 s, read-only)
-	python3 extract.py --out data.json
+	bun plugin/cli.ts extract --out data.json
 build:                            ## data.json + template.html -> opencode_time_full.html
-	python3 build.py
+	bun plugin/cli.ts build --data data.json --out opencode_time_full.html
 verify:                           ## headless-Chromium checks on the built deck
 	node verify.mjs opencode_time_full.html
 publish:                          ## push the built deck to the gist and print the rendered URL
 	./publish.sh opencode_time_full.html
 template:                         ## re-derive template.html from the reference deck (rarely needed)
-	python3 tools/make_template.py legacy/opencode_time_full.reference.html template.html
+	bun plugin/cli.ts template legacy/opencode_time_full.reference.html template.html
+typecheck:                        ## tsc --noEmit over plugin/
+	bunx tsc --noEmit
+contribute:                       ## submit anonymised cycle facts to the global scorecard
+	bun plugin/cli.ts contribute --data data.json
+contribute-preview:               ## build the contribution payload without sending, then privacy-grep it
+	bun plugin/cli.ts contribute --data data.json --dry-run --out /tmp/opencode/contrib-preview.json
+	grep -q '"cols":\["cycle_key","day","model","prov","role","pm","pp","bm","bp","u","a","tedits","tpaths","teerr","tcost","tship","thrs","tver","tabort","latmed"\]' /tmp/opencode/contrib-preview.json
+	! grep -E -q '/home|ses_|/Users/' /tmp/opencode/contrib-preview.json
 clean:
 	rm -f data.json opencode_time_full.html

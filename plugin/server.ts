@@ -5,9 +5,16 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import { clientHost, DEFAULT_HOST, DEFAULT_PORT } from "./config.ts";
+import { clientHost, DEFAULT_HOST, DEFAULT_PORT, TEMPLATE } from "./config.ts";
 import { renderDeck } from "./build.ts";
+import {
+  resolveContribute,
+  runContribute,
+  setContributeEnabled,
+} from "./contribute.ts";
 import { extractStatus, getData, getDataFile, peekCache } from "./extract.ts";
+import { getStatus, schedulerOptions } from "./scheduler.ts";
+import type { ContributeStatus } from "./contribute.ts";
 
 export type Health = {
   ok: boolean;
@@ -20,6 +27,8 @@ export type Health = {
   extracting: boolean;
   error: string | null;
   cache: string;
+  runner: string | null;
+  contribute: ContributeStatus & { parked: boolean };
 };
 
 let server: Server | null = null;
@@ -44,7 +53,14 @@ export async function health(): Promise<Health> {
     extracting: ex.extracting,
     error: bindError ?? ex.error,
     cache: ex.cache,
+    runner: ex.runner,
+    contribute: getStatus(),
   };
+}
+
+function isLoopback(req: IncomingMessage): boolean {
+  const peer = req.socket.remoteAddress ?? "";
+  return peer === "127.0.0.1" || peer === "::1" || peer === "::ffff:127.0.0.1";
 }
 
 function send(
@@ -93,12 +109,66 @@ async function handle(
       );
       return;
     }
+    // Loopback only even when bound to 0.0.0.0: contributing is the local
+    // user's explicit act, and the install id must not leave the machine.
+    if (method === "POST" && url.pathname === "/contribute") {
+      if (!isLoopback(req)) {
+        send(
+          res,
+          403,
+          JSON.stringify({ ok: false, error: "loopback only" }),
+          "application/json; charset=utf-8",
+        );
+        return;
+      }
+      const out = await runContribute({
+        dryRun: url.searchParams.get("dry") === "1",
+        refresh: false,
+      });
+      send(res, 200, JSON.stringify(out), "application/json; charset=utf-8");
+      return;
+    }
+    if (method === "POST" && url.pathname === "/contribute-toggle") {
+      if (!isLoopback(req)) {
+        send(
+          res,
+          403,
+          JSON.stringify({ ok: false, error: "loopback only" }),
+          "application/json; charset=utf-8",
+        );
+        return;
+      }
+      // The file switch is meaningless when env/options override it; say so
+      // instead of pretending to toggle.
+      const before = resolveContribute(schedulerOptions());
+      if (before.source === "env" || before.source === "options") {
+        send(
+          res,
+          200,
+          JSON.stringify({
+            ok: false,
+            ...getStatus(),
+            error: `overridden by ${before.source}`,
+          }),
+          "application/json; charset=utf-8",
+        );
+        return;
+      }
+      setContributeEnabled(!before.enabled);
+      send(
+        res,
+        200,
+        JSON.stringify({ ok: true, ...getStatus() }),
+        "application/json; charset=utf-8",
+      );
+      return;
+    }
     if (
       method === "GET" &&
       (url.pathname === "/" || url.pathname === "/index.html")
     ) {
       const data = await getData(false);
-      const html = await renderDeck(data);
+      const html = await renderDeck(data, TEMPLATE, true);
       send(res, 200, html, "text/html; charset=utf-8");
       return;
     }

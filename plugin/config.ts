@@ -1,13 +1,12 @@
-// Paths and knobs for the live HTTP plugin. extract.py still owns the metrics.
+// Paths and knobs for the live HTTP plugin.
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-export const EXTRACT_PY =
-  process.env.OC_EXTRACT ?? join(REPO_ROOT, "extract.py");
 export const TEMPLATE = join(REPO_ROOT, "template.html");
+export const CLI_TS = join(REPO_ROOT, "plugin", "cli.ts");
 export const SHARE_DIR = join(homedir(), ".local", "share", "ocProductivity");
 export const CACHE_PATH =
   process.env.OC_PRODUCTIVITY_CACHE ?? join(SHARE_DIR, "data.json");
@@ -26,6 +25,10 @@ export const DEFAULT_TTL_MS = readNum(
   5 * 60 * 1000,
 );
 export const EXTRACT_TIMEOUT_MS = 180_000;
+// Global scorecard ingestion. OC_PRODUCTIVITY_CONTRIB_URL overrides.
+export const CONTRIB_URL =
+  process.env.OC_PRODUCTIVITY_CONTRIB_URL ??
+  "https://contribute.pragmatikos.ai/v1/contribute";
 
 export function readNum(value: unknown, fallback: number): number {
   const n = typeof value === "number" ? value : Number(value);

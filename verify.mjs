@@ -71,6 +71,9 @@ const ledger = await page.evaluate(() => ({ lines: LEDGER.lines, stale: LEDGER.l
 const pcsum = await page.locator("#pcsum").innerText();
 check("edit-path coverage: ledger status", ledger.lines ? (ledger.stale ? pcsum.startsWith("Edit ledger stale") : /^Edit ledger live since \d{4}-\d{2}-\d{2}/.test(pcsum)) : pcsum.startsWith("Edit ledger inactive"), pcsum.slice(0, 120));
 check("ledger chip shown only when inactive or stale", (await page.locator("#k_ledger").isVisible()) === (!ledger.lines || ledger.stale));
+check("contribute button present but hidden in snapshot", (await count("#contrib")) === 1 && (await page.locator("#contrib").isHidden()));
+check("contribute panel hidden in snapshot", (await count("#cpanel")) === 1 && (await page.locator("#cpanel").isHidden()));
+check("insight chip hidden in snapshot", (await count("#k_share")) === 1 && (await page.locator("#k_share").isHidden()));
 
 // global filters: window, session role, hide-small — every card must follow
 const snap = async () => ({
@@ -138,8 +141,8 @@ await click("#lbt th.sortable[data-k='4']"); await click("#lbt th.sortable[data-
 check("table sorting", (await page.locator("#tb tr").first().innerText()) !== firstBefore);
 
 // human turns to ship: strips by default, radar behind a toggle
-await click("#tview [data-v=strips]");
 check("turns strips", (await count("#tstrips circle[data-s]")) > 20);
+check("turns defaults to relative", (await page.locator("#tscale [data-s=relative]").getAttribute("aria-pressed")) === "true");
 await click("#tscale [data-s=minmax]");
 await click("#torient [data-o=raw]");
 const sLo = parseFloat(await page.locator('#tstrips text[data-tick="0-min"]').textContent()), sHi = parseFloat(await page.locator('#tstrips text[data-tick="0-max"]').textContent());
@@ -185,7 +188,7 @@ const tsumAll = await page.locator("#tsum").innerText();
 await click('#gwin [data-w="30"]');
 check("turns card follows window", (await page.locator("#tsum").innerText()) !== tsumAll);
 await click("#greset");
-check("turns primary sector", (await count("#rchart path[data-sector]")) === 1);
+check("radar primary labels", (await count('#ochart text[font-weight="600"]')) === 2 && (await count('#rchart text[font-weight="600"]')) === 3 && (await count("#ochart path[data-sector]")) === 0 && (await count("#rchart path[data-sector]")) === 0);
 check("turns core column", (await count("#ttable thead th")) === 13 && /\d/.test(await page.locator("#ttb tr td:nth-child(7)").first().innerText()));
 const tJudged = await page.locator("#ttb tr td:nth-child(2)").evaluateAll((tds) => tds.map((t) => parseInt(t.innerText)));
 check("turns default sort judged", tJudged.length > 3 && tJudged.every((v, i) => i === 0 || v <= tJudged[i - 1]));
@@ -194,6 +197,25 @@ check("human turn labels", (await page.locator("#pmetric [data-y=epp]").innerTex
 await click("#torient [data-o=raw]");
 check("turns radar raw mode", (await page.locator("#rnote").innerText()).includes("mirrored so outward is more"));
 await click("#torient [data-o=better]");
+
+// cycles are the judged unit: more cycles than sessions, one session spans several,
+// the KPI equals a recomputation from CYC, and the funnel follows the combo/off unit
+const cyc = await page.evaluate(() => {
+  const CC = {}; CYC_COLS.forEach((c, i) => CC[c] = i);
+  const SC2 = {}; SESS_COLS.forEach((c, i) => SC2[c] = i);
+  const per = {};
+  CYC.forEach((c) => per[c[CC.sess]] = (per[c[CC.sess]] || 0) + 1);
+  const j = CYC.filter((c) => !SESS[c[CC.sess]][SC2.child] && c[CC.a] > 0 && c[CC.tedits] > 0 && c[CC.tpaths]);
+  const sh = j.filter((c) => c[CC.tship]);
+  return { n: CYC.length, s: SESS.length, multi: Math.max(...Object.values(per)), kpi: (j.reduce((a, c) => a + c[CC.u], 0) / sh.length).toFixed(1) };
+});
+check("cycles dataset", cyc.n >= cyc.s && cyc.multi > 1, `${cyc.n} cycles, ${cyc.s} sessions, max ${cyc.multi}/session`);
+check("KPI matches cycle recomputation", cyc.kpi === (await page.locator("#k_tts").innerText()).trim(), `page ${await page.locator("#k_tts").innerText()}, cyc ${cyc.kpi}`);
+check("turns card counts cycles", (await page.locator("#tsum").innerText()).includes("judged cycles"));
+check("funnel counts cycles in combo", (await page.locator("#sfund").innerText()).startsWith("Share of cycles"));
+await click("#srole [data-r=off]");
+check("funnel counts sessions when off", (await page.locator("#sfund").innerText()).startsWith("Share of sessions"));
+await click("#srole [data-r=combo]");
 
 // tooltips
 await page.evaluate(() => document.getElementById("cchart").scrollIntoView({ block: "center" }));
@@ -204,15 +226,58 @@ await page.locator("#rchart circle[data-s]").first().hover({ force: true }); awa
 check("turns radar tooltip", (await page.locator("#tip").innerText()).includes("Turns to ship"));
 await click("#tview [data-v=strips]");
 
-// overall score card: same factory, ten axes, ranked by score
+// overall score card: same factory, nine axes in five tiers, ranked by score
 const ov = await page.locator("#orank .row > span:last-child").evaluateAll((es) => es.map((e) => parseFloat(e.innerText)));
 check("overall rank", ov.length > 3 && ov.every((v, i) => i === 0 || v <= ov[i - 1]));
+check(
+  "overall ranking floor",
+  await page.evaluate(() => {
+    const judged = {};
+    document.querySelectorAll('#otb tr').forEach((tr) => {
+      judged[tr.children[0].innerText] = parseInt(tr.children[1].innerText.replace(/,/g, ''));
+    });
+    const ranked = [...document.querySelectorAll('#orank .row .lab')].map((e) => e.innerText);
+    return ranked.length > 0 && ranked.every((l) => judged[l] >= 10);
+  }),
+);
+check("overall unranked dimmed", (await count("#otb tr[data-unr]")) > 0);
+check("overall legend hidden in radar", await page.locator("#oleg").isHidden());
+check("overall defaults to relative", (await page.locator("#oscale [data-s=relative]").getAttribute("aria-pressed")) === "true");
+await page.locator("#orank .row").nth(0).click(); await page.waitForTimeout(150);
+await page.locator("#orank .row").nth(1).click(); await page.waitForTimeout(150);
+check("overall compare panel", (await page.locator("#ocomp").isVisible()) && (await count("#ocomp tbody tr")) === 17);
+check("overall compare isolates two", await page.locator("#ochart").evaluate((el) => [...el.querySelectorAll("path[data-s]").values()].filter((p) => p.style.display !== "none").length) === 2);
+await page.locator("#ocomp .lgreset").click(); await page.waitForTimeout(150);
+check("overall compare clear", (await count("#ocomp tbody tr")) === 0);
 await click("#oview [data-v=strips]");
 check("overall strips", (await count("#ostrips line[data-pool]")) === 10);
 await click("#oview [data-v=radar]");
 check("overall radar", (await count("#ochart line")) === 10);
+check("overall radar dir colours", (await count("#ochart text[data-dir=hi]")) === 4 && (await count("#ochart text[data-dir=lo]")) === 6 && ((await page.locator("#ochart text[data-dir=hi]").first().getAttribute("fill")) || "").includes("chart-2"));
+check("radar dir blocks", (await count("#ochart path[data-bg]")) === 10 && (await count("#rchart path[data-bg]")) === 6 && (await page.locator("#ochart text[data-dir]").evaluateAll((ts) => ts.map((t) => t.dataset.dir).join(""))) === "hihihihilolololololo" && (await page.locator("#rchart text[data-dir]").evaluateAll((ts) => ts.map((t) => t.dataset.dir).join(""))) === "hihihihilolo" && (await page.locator("#ochart text[data-dir]").evaluateAll((ts) => ts.map((t) => t.textContent).join("|"))) === "Ship %|One-shot %|Verified %|Edits/turn|Time/step|Hours/ship|$/ship|Tool errors|Aborts|Turns/ship");
 await click("#oview [data-v=strips]");
-check("overall table", (await count("#otable thead th")) === 14);
+check("overall table", (await count("#otable thead th")) === 20);
+const osum = await page.locator("#osum").innerText();
+const wsum = ((osum.match(/weights ([\d/]+)/) || [, ""])[1]).split("/").filter(Boolean).map(Number);
+check("overall weights sum to 100", wsum.length === 6 && wsum.reduce((a, b) => a + b, 0) === 100, osum.slice(0, 160));
+check("overall pool scores 50", (await page.evaluate(() => window.__opoolScore)) === 50);
+check("overall sensitivity line", /top-3 (stable|sensitive) to ±10 tier weights/.test(osum), osum.slice(0, 220));
+const otiers = await page.locator("#otb tr").evaluateAll((rs) => rs.flatMap((r) => [...r.children].slice(4, 10).map((td) => td.innerText)));
+check("overall tier scores in range", otiers.length > 0 && otiers.every((v) => /^\d+[*]?$/.test(v) && +v.replace("*", "") >= 0 && +v.replace("*", "") <= 100), otiers.slice(0, 8).join(","));
+check("overall imputed tiers marked 50*", otiers.filter((v) => v.includes("*")).every((v) => v === "50*"));
+const noCost = await page.locator("#otb tr").evaluateAll((rs) => rs.filter((r) => [...r.children][14].innerText === "—").map((r) => [...r.children][3].innerText));
+check("overall zero-cost scored not dropped", noCost.length > 0 && noCost.every((v) => v !== "—"), noCost.join(",") || "no zero-cost group");
+const noCostIdx = await page.locator("#otb tr").evaluateAll((rs) => rs.findIndex((r) => [...r.children][14].innerText === "—"));
+if (noCostIdx >= 0) { await page.locator("#otb tr").nth(noCostIdx).hover(); await page.waitForTimeout(150); }
+check("overall zero-cost flagged", noCostIdx < 0 || (await page.locator("#tip").innerText()).includes("cost unknown"));
+await page.mouse.move(5, 5);
+await click("#oev [data-e=raw]");
+const zeroErr = await page.locator("#otb tr").evaluateAll((rs) => rs.filter((r) => [...r.children][15].innerText === "0.0%").map((r) => [...r.children][3].innerText + "/" + [...r.children][6].innerText));
+check("overall zero-error scored best not dropped", zeroErr.length > 0 && zeroErr.every((v) => !v.startsWith("—")), zeroErr.join(",") || "no zero-error group");
+await click("#oev [data-e=weighted]");
+check("overall latency values", (await page.locator("#otb tr td:nth-child(20)").allInnerTexts()).some((v) => /^\d+\.\d$/.test(v)));
+check("overall one-shot alive", (await page.locator("#otb tr td:nth-child(12)").allInnerTexts()).some((v) => v !== '0%' && v !== '—'));
+check("no NaN in any table", !(await page.locator("tbody").allInnerTexts()).join(" ").includes("NaN"));
 await page.mouse.move(5, 5); await page.keyboard.press("Escape");
 check("escape hides tooltip", await page.locator("#tip").isHidden());
 check("no console errors after interaction", errors.length === 0, errors.join(" | ").slice(0, 300));
