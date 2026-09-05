@@ -44,13 +44,20 @@ function installPlugin(repoArg?: string): void {
     plugins?: unknown;
   };
   const path = repo;
-  const plugins = data.plugins;
-  if (Array.isArray(plugins) && plugins.includes(path)) {
+  const plugins = Array.isArray(data.plugins)
+    ? (data.plugins as unknown[])
+    : [];
+  if (plugins.includes(path)) {
     console.log(`already in plugins: ${path}`);
     return;
   }
-  if (!Array.isArray(plugins)) data.plugins = [path];
+  const stale = plugins.findIndex(
+    (p) =>
+      typeof p === "string" && p.replace(/\/$/, "").endsWith("/ocProductivity"),
+  );
+  if (stale >= 0) plugins[stale] = path;
   else plugins.push(path);
+  data.plugins = plugins;
   writeFileSync(cfg, JSON.stringify(data, null, 2) + "\n");
   console.log(`installed: ${path} -> ${cfg}`);
 }

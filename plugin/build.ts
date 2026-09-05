@@ -159,8 +159,8 @@ export async function renderDeck(
   for (const [k, v] of Object.entries(kpi)) {
     h = h.replaceAll(`@@${k}@@`, v);
   }
-  // The Contribute button only exists on the live server; the gist snapshot
-  // (and file://) hides it — there is no local endpoint to post to.
+  // The Contribute button only exists on the live server; the snapshot
+  // hides it — there is no local endpoint to post to.
   h = h.replaceAll("@@LIVE@@", live ? "" : 'style="display:none"');
   const left = h.match(/@@[a-zA-Z_]+@@/g);
   if (left)

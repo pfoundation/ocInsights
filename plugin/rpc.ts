@@ -106,8 +106,8 @@ const settingsEventSchema = {
   additionalProperties: false,
 } as const;
 
-export const Productivity = Rpc.define({
-  id: "ocProductivity",
+export const Insights = Rpc.define({
+  id: "ocInsights",
   events: {
     contributed: { schema: contributedEventSchema },
     settings: { schema: settingsEventSchema },

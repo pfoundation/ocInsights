@@ -1,5 +1,5 @@
 // Compatibility entry: the ledger hook now lives in plugin/ledger.ts and is
-// registered by the oc.productivity plugin. This file keeps the old default
+// registered by the oc.insights plugin. This file keeps the old default
 // export so a leftover ~/.config/opencode/plugin/editLedger.ts symlink still
 // records edits. extract dedupes on `call` if both load.
 //

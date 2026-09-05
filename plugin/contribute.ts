@@ -164,7 +164,7 @@ const FALSY = /^(0|false|no|off)$/i;
 export function resolveContribute(
   options?: Readonly<Record<string, unknown>>,
 ): { enabled: boolean; source: ContribSource } {
-  const env = process.env.OC_PRODUCTIVITY_CONTRIBUTE;
+  const env = process.env.OC_INSIGHTS_CONTRIBUTE;
   if (typeof env === "string" && env !== "") {
     if (FALSY.test(env)) return { enabled: false, source: "env" };
     if (TRUTHY.test(env)) return { enabled: true, source: "env" };
@@ -483,7 +483,7 @@ export async function runContribute(opts: {
       changed: changed.length,
       sent: 0,
       error:
-        "contribute URL not configured (--url or OC_PRODUCTIVITY_CONTRIB_URL)",
+        "contribute URL not configured (--url or OC_INSIGHTS_CONTRIB_URL)",
     };
   }
   if (!changed.length) {

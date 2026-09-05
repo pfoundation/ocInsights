@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "oc-productivity",
+      "name": "@pfoundation/ocinsights",
       "dependencies": {
         "@opencode-ai/plugin": "beta",
       },

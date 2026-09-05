@@ -1,5 +1,5 @@
 // Paths and knobs for the live HTTP plugin.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,27 +7,40 @@ import { fileURLToPath } from "node:url";
 export const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 export const TEMPLATE = join(REPO_ROOT, "template.html");
 export const CLI_TS = join(REPO_ROOT, "plugin", "cli.ts");
-export const SHARE_DIR = join(homedir(), ".local", "share", "ocProductivity");
+const OLD_SHARE_DIR = join(homedir(), ".local", "share", "ocProductivity");
+export const SHARE_DIR = join(homedir(), ".local", "share", "ocInsights");
+
+function migrateShareDir(): void {
+  try {
+    if (existsSync(SHARE_DIR) || !existsSync(OLD_SHARE_DIR)) return;
+    renameSync(OLD_SHARE_DIR, SHARE_DIR);
+    console.log(`[oc.insights] migrated ${OLD_SHARE_DIR} -> ${SHARE_DIR}`);
+  } catch (err) {
+    console.error("[oc.insights] share dir migrate failed", err);
+  }
+}
+migrateShareDir();
+
 export const CACHE_PATH =
-  process.env.OC_PRODUCTIVITY_CACHE ?? join(SHARE_DIR, "data.json");
+  process.env.OC_INSIGHTS_CACHE ?? join(SHARE_DIR, "data.json");
 export const HTTP_SETTINGS_PATH = join(SHARE_DIR, "http.json");
 
 const fileSettings = loadHttpSettings();
 export const DEFAULT_HOST = readHost(
-  process.env.OC_PRODUCTIVITY_HOST ?? fileSettings.host,
+  process.env.OC_INSIGHTS_HOST ?? fileSettings.host,
 );
 export const DEFAULT_PORT = readNum(
-  process.env.OC_PRODUCTIVITY_PORT ?? fileSettings.port,
+  process.env.OC_INSIGHTS_PORT ?? fileSettings.port,
   4173,
 );
 export const DEFAULT_TTL_MS = readNum(
-  process.env.OC_PRODUCTIVITY_TTL_MS ?? fileSettings.ttlMs,
+  process.env.OC_INSIGHTS_TTL_MS ?? fileSettings.ttlMs,
   5 * 60 * 1000,
 );
 export const EXTRACT_TIMEOUT_MS = 180_000;
-// Global scorecard ingestion. OC_PRODUCTIVITY_CONTRIB_URL overrides.
+// Global scorecard ingestion. OC_INSIGHTS_CONTRIB_URL overrides.
 export const CONTRIB_URL =
-  process.env.OC_PRODUCTIVITY_CONTRIB_URL ??
+  process.env.OC_INSIGHTS_CONTRIB_URL ??
   "https://contribute.pragmatikos.ai/v1/contribute";
 
 export function readNum(value: unknown, fallback: number): number {

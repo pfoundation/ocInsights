@@ -2755,7 +2755,7 @@
       bindTip(c,()=>`<b>${days[wi]} ${String(hi).padStart(2,'0')}:00 UTC</b>`+row('Messages',v.toLocaleString())+row('Share of all',(v/rhyTot*100).toFixed(2)+'%')+row('Share of '+days[wi],dayTot[wi]?(v/dayTot[wi]*100).toFixed(1)+'%':'0%')+row('Share of '+String(hi).padStart(2,'0')+':00',hourTot[hi]?(v/hourTot[hi]*100).toFixed(1)+'%':'0%'));
       rhy.appendChild(c)})});
       }
-      // ---------- boot: yield once so #loading paints before the first render (htmlpreview evaluates this script inside a microtask, so without the yield the loader never shows) ----------
+      // ---------- boot: yield once so #loading paints before the first render (without the yield the loader never shows) ----------
       let booted=false;
       function boot(){if(booted)return;booted=true;renderAll();const l=$id('loading');if(l)l.remove()}
       window.addEventListener('error',e=>{const l=$id('loading');if(l)l.querySelector('.lmsg').textContent='Failed to render: '+(e.message||'unknown error')});

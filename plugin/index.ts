@@ -1,4 +1,4 @@
-// oc.productivity — live HTTP for the extract payload, plus the edit ledger.
+// oc.insights — live HTTP for the extract payload, plus the edit ledger.
 //
 // Plugin API: opencode 1.18+ / 0.0.0-beta loads `export default Plugin.define({ id, setup })`.
 // Plugins are instantiated once per location; the HTTP server and the contribute
@@ -25,12 +25,12 @@ import {
   runContribute,
   setContributeEnabled,
 } from "./contribute.ts";
-import { Productivity, type ContribEventName } from "./rpc.ts";
+import { Insights, type ContribEventName } from "./rpc.ts";
 import { getStatus, startScheduler, stopScheduler } from "./scheduler.ts";
 import { ensureServer, health } from "./server.ts";
 
 export default Plugin.define({
-  id: "oc.productivity",
+  id: "oc.insights",
   async setup(ctx) {
     configureExtract({
       ttlMs: readNum(ctx.options.ttlMs, DEFAULT_TTL_MS),
@@ -40,14 +40,14 @@ export default Plugin.define({
     loadContributor();
     const resolved = resolveContribute(ctx.options);
     console.log(
-      `[oc.productivity] contributions ${resolved.enabled ? "on" : "off"} (source: ${resolved.source})` +
+      `[oc.insights] contributions ${resolved.enabled ? "on" : "off"} (source: ${resolved.source})` +
         (resolved.enabled ? ", first check in ~3 min" : ""),
     );
     const ledgerDispose = await setupLedger(ctx);
     try {
       await ensureServer({ port, host });
     } catch (err) {
-      console.error("[oc.productivity] http server failed", err);
+      console.error("[oc.insights] http server failed", err);
     }
     let emit:
       | ((
@@ -62,14 +62,14 @@ export default Plugin.define({
       try {
         await emit?.(name, data);
       } catch (err) {
-        console.error("[oc.productivity] event emit failed", err);
+        console.error("[oc.insights] event emit failed", err);
       }
     };
     let toolDispose: (() => void) | undefined;
     try {
       const toolReg = await ctx.tool.transform((ed) => {
         ed.add({
-          name: "productivity_contribute",
+          name: "insights_contribute",
           description:
             "Manage anonymous contribution of per-cycle model stats to the global Pragmatikos scorecard: status, enable, disable, or send now. Only 20 numeric/model fields per cycle ever leave the machine.",
           input: {
@@ -89,7 +89,7 @@ export default Plugin.define({
               const before = resolveContribute(ctx.options);
               if (before.source === "env" || before.source === "options") {
                 return {
-                  content: `Contributions are forced ${before.enabled ? "on" : "off"} by ${before.source === "env" ? "OC_PRODUCTIVITY_CONTRIBUTE" : "plugin options"}; change that instead.`,
+                  content: `Contributions are forced ${before.enabled ? "on" : "off"} by ${before.source === "env" ? "OC_INSIGHTS_CONTRIBUTE" : "plugin options"}; change that instead.`,
                 };
               }
               setContributeEnabled(on);
@@ -132,7 +132,7 @@ export default Plugin.define({
         void toolReg.dispose();
       };
     } catch (err) {
-      console.error("[oc.productivity] tool register failed", err);
+      console.error("[oc.insights] tool register failed", err);
     }
     let rpcDispose: (() => void) | undefined;
     try {
@@ -162,7 +162,7 @@ export default Plugin.define({
           parked: st.parked,
         };
       };
-      const registration = await ctx.rpc.register(Productivity, {
+      const registration = await ctx.rpc.register(Insights, {
         status: async () => rpcHealth(),
         refresh: async () => {
           await getData(true);
@@ -233,7 +233,7 @@ export default Plugin.define({
         void registration.dispose();
       };
     } catch (err) {
-      console.error("[oc.productivity] rpc register failed", err);
+      console.error("[oc.insights] rpc register failed", err);
     }
     const stopSchedulerFn = startScheduler({
       emit: (name, data) => safeEmit(name, data),

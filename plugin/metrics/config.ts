@@ -1,6 +1,7 @@
 // Extract knobs. One place for constants — plugin/ledger.ts imports EDIT_TOOLS from here.
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { SHARE_DIR } from "../config.ts";
 
 export const DB_PATH =
   process.env.OC_DB ??
@@ -18,8 +19,7 @@ export const COMMIT_WINDOW_H = 72; // a commit's attribution window, capped
 export const COMMIT_GRACE_S = 300; // messages up to this long after a commit still count
 export const SHIP_DAYS = 7; // a session "shipped" if its edits landed in a commit within this many days
 export const LEDGER_PATH =
-  process.env.OC_EDIT_LEDGER ??
-  join(homedir(), ".local", "share", "ocProductivity", "edits.jsonl");
+  process.env.OC_EDIT_LEDGER ?? join(SHARE_DIR, "edits.jsonl");
 export const PART_BACKFILL = true; // read edit paths from the legacy `part` table (Feb–Aug 2026)
 export const BUILD_AGENTS = new Set([
   "build",

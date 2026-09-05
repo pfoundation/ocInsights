@@ -1,14 +1,47 @@
 {
-  "name": "oc-productivity",
-  "version": "0.2.0",
-  "description": "OpenCode plugin: live productivity data over HTTP, plus the edit ledger",
+  "name": "@pfoundation/ocinsights",
+  "version": "26.9.0",
+  "description": "OpenCode plugin: live insights deck over HTTP, plus the edit ledger",
   "type": "module",
-  "private": true,
   "license": "MIT",
+  "author": "P Foundation",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pfoundation/ocInsights.git"
+  },
+  "homepage": "https://github.com/pfoundation/ocInsights#readme",
+  "bugs": {
+    "url": "https://github.com/pfoundation/ocInsights/issues"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "insights",
+    "productivity",
+    "analytics",
+    "scorecard"
+  ],
   "exports": {
     ".": "./plugin/index.ts",
     "./tui": "./plugin/tui.tsx",
     "./rpc": "./plugin/rpc.ts"
+  },
+  "files": [
+    "plugin",
+    "index.ts",
+    "tui.ts",
+    "template.html",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "pack:check": "npm pack --dry-run"
   },
   "dependencies": {
     "@opencode-ai/plugin": "beta"

@@ -39,8 +39,7 @@ function metaOf(data: Record<string, unknown>): {
   sessions: number | null;
 } {
   const meta = data.meta as
-    | { generated?: unknown; sessions?: unknown }
-    | undefined;
+    { generated?: unknown; sessions?: unknown } | undefined;
   return {
     generated: typeof meta?.generated === "string" ? meta.generated : null,
     sessions: typeof meta?.sessions === "number" ? meta.sessions : null,
@@ -144,7 +143,7 @@ function runWorker(): Promise<void> {
       gotMessage = true;
       const msg = ev.data;
       if (msg && msg.ok) {
-        if (msg.summary) console.log(`[oc.productivity] ${msg.summary}`);
+        if (msg.summary) console.log(`[oc.insights] ${msg.summary}`);
         finish();
         return;
       }
@@ -188,14 +187,14 @@ function runSubprocess(): Promise<void> {
 function runExtract(): Promise<Cache> {
   extracting = true;
   const started = Date.now();
-  console.log("[oc.productivity] extract started");
+  console.log("[oc.insights] extract started");
   return (
     typeof Worker === "undefined"
       ? runSubprocess()
       : runWorker().catch((err: Error & { loadFailure?: boolean }) => {
           if (err.loadFailure) {
             console.warn(
-              "[oc.productivity] worker failed to load, falling back to bun subprocess",
+              "[oc.insights] worker failed to load, falling back to bun subprocess",
               err.message,
             );
             return runSubprocess();
@@ -206,9 +205,7 @@ function runExtract(): Promise<Cache> {
     .then(() => loadDisk())
     .then((disk) => {
       if (!disk) throw new Error("extract wrote no cache");
-      console.log(
-        `[oc.productivity] extract done in ${Date.now() - started}ms`,
-      );
+      console.log(`[oc.insights] extract done in ${Date.now() - started}ms`);
       return disk;
     })
     .finally(() => {
@@ -237,7 +234,7 @@ async function getCache(refresh: boolean): Promise<Cache> {
     })
     .catch((err) => {
       lastError = err instanceof Error ? err.message : String(err);
-      console.error("[oc.productivity] extract failed", lastError);
+      console.error("[oc.insights] extract failed", lastError);
       if (cache) return cache;
       throw err instanceof Error ? err : new Error(lastError);
     })

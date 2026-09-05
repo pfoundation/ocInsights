@@ -204,8 +204,8 @@ function listen(port: number, host: string): Promise<void> {
       const local = `http://${clientHost(host)}:${actualPort}`;
       console.log(
         host === "0.0.0.0"
-          ? `[oc.productivity] listening on ${host}:${actualPort} (${local})`
-          : `[oc.productivity] listening on ${local}`,
+          ? `[oc.insights] listening on ${host}:${actualPort} (${local})`
+          : `[oc.insights] listening on ${local}`,
       );
       resolve();
     };
@@ -230,7 +230,7 @@ export async function ensureServer(opts?: {
         bindHost = host;
         owned = false;
         bindError = null;
-        console.log(`[oc.productivity] ${host}:${port} already bound, reusing`);
+        console.log(`[oc.insights] ${host}:${port} already bound, reusing`);
         return;
       }
       bindError = err instanceof Error ? err.message : String(err);

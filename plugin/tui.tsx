@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { Plugin } from "@opencode-ai/plugin/tui";
-import { Productivity } from "./rpc.ts";
+import { Insights } from "./rpc.ts";
 
 type Share = {
   enabled: boolean;
@@ -47,7 +47,7 @@ async function refresh(
   context: Parameters<Parameters<typeof Plugin.define>[0]["setup"]>[0],
 ): Promise<Share> {
   try {
-    return asShare(await context.client.rpc(Productivity).contributeStatus({}));
+    return asShare(await context.client.rpc(Insights).contributeStatus({}));
   } catch {
     return { ...EMPTY };
   }
@@ -58,7 +58,7 @@ async function openInsights(
 ): Promise<void> {
   let url = "http://127.0.0.1:4173/";
   try {
-    const raw = asUrl(await context.client.rpc(Productivity).status({}));
+    const raw = asUrl(await context.client.rpc(Insights).status({}));
     url = raw.endsWith("/") ? raw : `${raw}/`;
   } catch {
     // Fall through to the default URL.
@@ -88,7 +88,7 @@ async function openInsights(
 }
 
 export default Plugin.define({
-  id: "oc.productivity.tui",
+  id: "oc.insights.tui",
   setup(context) {
     const openDialog = async (): Promise<void> => {
       const st = await refresh(context);
@@ -110,7 +110,7 @@ export default Plugin.define({
         try {
           const next = asShare(
             await context.client
-              .rpc(Productivity)
+              .rpc(Insights)
               .setContribute({ enabled: !st.enabled }),
           );
           await refresh(context);
@@ -126,7 +126,7 @@ export default Plugin.define({
       } else if (picked === "send") {
         try {
           const r = asContrib(
-            await context.client.rpc(Productivity).contribute({}),
+            await context.client.rpc(Insights).contribute({}),
           );
           await refresh(context);
           context.ui.toast.show({
@@ -158,9 +158,9 @@ export default Plugin.define({
       priority: 10,
       commands: [
         {
-          id: "oc.productivity.insights",
+          id: "oc.insights.deck",
           title: "Open insights",
-          group: "Productivity",
+          group: "Insights",
           bind: "ctrl+alt+i" as const,
           palette: true as const,
           slash: { name: "insights" },
@@ -185,9 +185,9 @@ export default Plugin.define({
       priority: 10,
       commands: [
         {
-          id: "oc.productivity.contribute",
+          id: "oc.insights.contribute",
           title: "Insight contribution settings",
-          group: "Productivity",
+          group: "Insights",
           palette: true as const,
           slash: { name: "contribute" },
           run: () => void openDialog(),
@@ -209,7 +209,7 @@ export default Plugin.define({
     let stopContributed = () => {};
     try {
       stopContributed = context.client
-        .rpc(Productivity)
+        .rpc(Insights)
         .events.on("contributed", (event) => {
           const d = (event as { data?: unknown })?.data as
             Record<string, unknown> | undefined;

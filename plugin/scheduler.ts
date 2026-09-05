@@ -18,7 +18,7 @@ import {
 import type { ContribEventName } from "./rpc.ts";
 
 const TICK_MS = 60 * 1000;
-const GATE = Symbol.for("oc.productivity.scheduler");
+const GATE = Symbol.for("oc.insights.scheduler");
 const ACTIVITY_PREFIXES = [
   "session.status",
   "session.idle",
@@ -102,9 +102,7 @@ async function tick(): Promise<void> {
   if (Date.now() - s.lastActive < QUIET_MS) {
     if (!s.waited) {
       s.waited = true;
-      console.log(
-        "[oc.productivity] contribution due, waiting for a quiet moment",
-      );
+      console.log("[oc.insights] contribution due, waiting for a quiet moment");
     }
     return;
   }
@@ -114,16 +112,16 @@ async function tick(): Promise<void> {
     if (!res.ok && res.status === 400) {
       s.parked = res.error ?? "http 400";
       console.error(
-        `[oc.productivity] contribute parked until restart: server rejected the payload (${s.parked})`,
+        `[oc.insights] contribute parked until restart: server rejected the payload (${s.parked})`,
       );
     } else if (!res.ok) {
       recordFail();
       console.error(
-        `[oc.productivity] contribute failed (${res.error ?? "unknown"}); retrying later`,
+        `[oc.insights] contribute failed (${res.error ?? "unknown"}); retrying later`,
       );
     } else if (res.sent > 0) {
       console.log(
-        `[oc.productivity] contributed ${res.sent} of ${res.rows} cycles` +
+        `[oc.insights] contributed ${res.sent} of ${res.rows} cycles` +
           (res.snapshot ? `, snapshot ${res.snapshot}` : ""),
       );
       try {
@@ -134,15 +132,15 @@ async function tick(): Promise<void> {
           auto: true,
         });
       } catch (err) {
-        console.error("[oc.productivity] contribute event emit failed", err);
+        console.error("[oc.insights] contribute event emit failed", err);
       }
     } else {
-      console.log("[oc.productivity] contribute: no changes, skipping");
+      console.log("[oc.insights] contribute: no changes, skipping");
     }
   } catch (err) {
     recordFail();
     console.error(
-      `[oc.productivity] contribute failed (${err instanceof Error ? err.message : String(err)}); retrying later`,
+      `[oc.insights] contribute failed (${err instanceof Error ? err.message : String(err)}); retrying later`,
     );
   }
 }

@@ -1,45 +1,53 @@
-# ocProductivity
+# ocInsights
 
-A single-file productivity deck built from the opencode session store and the git history of every project it touched. It answers: where did the time go, what did it cost, which models were used, and — the part that took the most care — which models actually ship work.
+A single-file insights deck built from the opencode session store and the git history of every project it touched. It answers: where did the time go, what did it cost, which models were used, and — the part that took the most care — which models actually ship work.
 
-Live deck (while OpenCode is running, after `make install-plugin`): http://127.0.0.1:4173/
+Live deck (while OpenCode is running, with the plugin installed): http://127.0.0.1:4173/
 
-Snapshot gist: https://gist.github.com/judsd/65ad8796a952e875bb72a1be19fbd052 (open `opencode_time_full.html` through htmlpreview; `publish.sh` prints the link).
+Snapshot: `make` builds `opencode_time_full.html`; open it directly in a browser.
+
+Formerly ocProductivity. On first load the plugin renames `~/.local/share/ocProductivity` to `~/.local/share/ocInsights` if the new path is absent, so the install UUID and edit ledger survive.
 
 ## Run it
+
+From npm, in `opencode.json`:
+
+```json
+{ "plugin": ["@pfoundation/ocinsights@26.9.0"] }
+```
+
+Local checkout:
 
 ```bash
 make install-plugin   # add this repo to global opencode plugins; restart opencode
 # then open http://127.0.0.1:4173/   (first request runs extract, ~15 s)
 
-make                  # extract -> build -> verify   (about 20 seconds; gist snapshot)
-make publish          # push the snapshot to the gist, print the rendered URL
+make                  # extract -> build -> verify   (about 20 seconds)
 make serve            # HTTP server without OpenCode (same port)
+make publish-npm      # typecheck, pack dry-run, npm publish
 ```
 
-Requirements: git, bun, `gh` authenticated with the gist scope, and node with playwright for `verify` (it falls back to `~/dev/datastudio/node_modules/playwright` if none is installed here). The database is opened read-only; nothing here writes to opencode.
+Requirements: git, bun, and node with playwright for `verify` (it falls back to `~/dev/datastudio/node_modules/playwright` if none is installed here). The database is opened read-only; nothing here writes to opencode. Publishing to npm needs `npm login` (and `NPM_TOKEN` on the GitHub repo for the tag workflow).
 
-Environment overrides: `OC_DB` (default `~/.local/share/opencode/opencode.db`), `OC_DEV_ROOT` (default `~/dev`, where the git repos live), `OC_GIT_AUTHORS` (comma-separated author names counted as yours, default `Jud Saoud,judsd`), `GIST_ID`, `OC_PRODUCTIVITY_PORT` (default `4173`), `OC_PRODUCTIVITY_HOST` (default `127.0.0.1`; set `0.0.0.0` to listen on all interfaces — unauthenticated, LAN-visible), `OC_PRODUCTIVITY_TTL_MS` (default `300000`), `OC_PRODUCTIVITY_CACHE` (default `~/.local/share/ocProductivity/data.json`). The same host/port/ttl live in `~/.local/share/ocProductivity/http.json` (env wins). Plugin options `port` / `host` / `ttlMs` override both. A local path in the `{ "package", "options" }` plugins form is ignored by OpenCode — keep the plugin as a string path and put `host` in `http.json`.
+Environment overrides: `OC_DB` (default `~/.local/share/opencode/opencode.db`), `OC_DEV_ROOT` (default `~/dev`, where the git repos live), `OC_GIT_AUTHORS` (comma-separated author names counted as yours, default `Jud Saoud,judsd`), `OC_INSIGHTS_PORT` (default `4173`), `OC_INSIGHTS_HOST` (default `127.0.0.1`; set `0.0.0.0` to listen on all interfaces — unauthenticated, LAN-visible), `OC_INSIGHTS_TTL_MS` (default `300000`), `OC_INSIGHTS_CACHE` (default `~/.local/share/ocInsights/data.json`). The same host/port/ttl live in `~/.local/share/ocInsights/http.json` (env wins). Plugin options `port` / `host` / `ttlMs` override both. A local path in the `{ "package", "options" }` plugins form is ignored by OpenCode — keep the plugin as a string path and put `host` in `http.json`.
 
 ## How it fits together
 
 ```
 index.ts           root re-export (opencode resolves directory plugins to <dir>/index.ts)
-tui.ts             root re-export for the TUI side (/insights, /contribute, footer chip)
-plugin/          OpenCode plugin (id oc.productivity)
-  ledger hook    every edit/write/patch -> ~/.local/share/ocProductivity/edits.jsonl
-  scheduler      auto-contribute: first send ~3 min after load when quiet, then every 6 h (diff-based)
-  agent tool     productivity_contribute (status|enable|disable|send)
+tui.ts             root re-export for the TUI side (/insights, /contribute)
+plugin/          OpenCode plugin (id oc.insights)
+  ledger hook    every edit/write/patch -> ~/.local/share/ocInsights/edits.jsonl
+  scheduler      auto-contribute: first send ~15 min after load when quiet, then every 6 h (diff-based)
+  agent tool     insights_contribute (status|enable|disable|send)
   HTTP singleton 127.0.0.1:4173 (or 0.0.0.0)  GET /  GET /data.json  GET /health  POST /refresh  POST /contribute  POST /contribute-toggle (loopback only)
-  on request     plugin/metrics in a Bun Worker -> ~/.local/share/ocProductivity/data.json  (~15 s, cached 5 min)
+  on request     plugin/metrics in a Bun Worker -> ~/.local/share/ocInsights/data.json  (~15 s, cached 5 min)
 
 plugin/metrics   one read-only pass over opencode.db + `git log` per repo  ->  data.json
 plugin/build.ts  data.json + template.html                                ->  HTML string
 plugin/cli.ts    extract | build | install | template | diff | contribute
 verify.mjs       opens the built deck in headless Chromium, 116 checks
-publish.sh       gh gist edit + rendered URL  (offline snapshot; htmlpreview cannot fetch localhost)
 template.html    the deck's CSS and JS with @@PLACEHOLDERS@@ where data goes
-legacy/          earlier one-off scripts and decks; superseded, kept for history
 ```
 
 Every number in the deck is computed in `plugin/metrics`. The plugin runs that pass in a Bun Worker on request and injects the result into `template.html` (same job as `plugin/build.ts`). If you want to change what is measured, edit `plugin/metrics`; if you want to change how it looks or behaves, edit `template.html` (it is plain HTML + vanilla JS, no framework, no dependencies).
@@ -71,9 +79,9 @@ bun plugin/cli.ts contribute off     # opt out (also: status, on)
 Or manage it without the terminal: `/contribute` in the TUI (insight contribution
 settings, send now, open insights), `/insights` (or ctrl+alt+i) to open the deck,
 the deck's Contribute panel toggle, or ask the agent ("disable contributions" runs
-the productivity_contribute tool). The deck header chip is hidden by default;
+the insights_contribute tool). The deck header chip is hidden by default;
 the Contribute panel has a Show chip button to reveal it.
-Higher-precedence off switches: `OC_PRODUCTIVITY_CONTRIBUTE=0`, or the plugin
+Higher-precedence off switches: `OC_INSIGHTS_CONTRIBUTE=0`, or the plugin
 option `contribute: false` (package-form installs only).
 
 The server component lives in `../pragmaServer` (Cloudflare Worker +

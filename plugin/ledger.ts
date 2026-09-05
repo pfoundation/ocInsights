@@ -5,7 +5,7 @@
 // git commits to sessions by file overlap, which needs exactly one fact per edit: when, which
 // session, which file. This appends that fact to an append-only JSONL file we own.
 //
-// Output:   ~/.local/share/ocProductivity/edits.jsonl   (override with OC_EDIT_LEDGER)
+// Output:   ~/.local/share/ocInsights/edits.jsonl   (override with OC_EDIT_LEDGER)
 // Line:     {"ts":…,"session":"ses_…","agent":"build","call":"call_…",
 //            "dir":"/home/ubuntu/dev/x","file":"/abs/path","tool":"edit"}
 //
