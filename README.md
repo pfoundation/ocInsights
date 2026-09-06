@@ -1,109 +1,94 @@
 # ocInsights
 
-A single-file insights deck built from the opencode session store and the git history of every project it touched. It answers: where did the time go, what did it cost, which models were used, and — the part that took the most care — which models actually ship work.
+[![npm version](https://img.shields.io/npm/v/@pfoundation/ocinsights.svg)](https://www.npmjs.com/package/@pfoundation/ocinsights)
+[![License: MIT](https://img.shields.io/npm/l/@pfoundation/ocinsights.svg)](LICENSE)
 
-Live deck (while OpenCode is running, with the plugin installed): http://127.0.0.1:4173/
+OpenCode plugin: a live insights deck over your session history and git repos. Where the time went, what it cost, which models were used — and which setups actually ship work.
 
-Snapshot: `make` builds `opencode_time_full.html`; open it directly in a browser.
+While OpenCode is running: `http://127.0.0.1:4173/`
 
-Formerly ocProductivity. On first load the plugin renames `~/.local/share/ocProductivity` to `~/.local/share/ocInsights` if the new path is absent, so the install UUID and edit ledger survive.
+## What you get
 
-## Run it
+Header KPIs (active hours · turns to ship · file edits · commits shipped · cost · tokens), then in pipeline order:
 
-From npm, in `opencode.json`:
+- **Time** — monthly hours by project, daily hours, tokens per day, work rhythm.
+- **Inputs** — models per day (by model / family / provider), who is talking (your prompts vs subagent prompts vs replies), agents and models.
+- **Output** — overall score (ten axes in six tiers, one score out of 100), human turns to ship, productivity by model (edits vs cost), shipping by model (edits vs steering, plus a funnel of how far work got).
+- **Outcome** — shipping in commits (median lines vs commit count toggle).
+- **Projects** — every worktree, with session depth.
+- **Method** — the judgment calls, printed next to the numbers.
+
+Global window / session-role / hide-small filters apply to every card at once.
+
+## Installation
+
+In `opencode.json`:
 
 ```json
-{ "plugin": ["@pfoundation/ocinsights@26.9.0"] }
+{ "plugin": ["@pfoundation/ocinsights"] }
 ```
 
-Local checkout:
+Restart OpenCode, then open `http://127.0.0.1:4173/`.
 
-```bash
-make install-plugin   # add this repo to global opencode plugins; restart opencode
-# then open http://127.0.0.1:4173/   (first request runs extract, ~15 s)
+## Usage
 
-make                  # extract -> build -> verify   (about 20 seconds)
-make serve            # HTTP server without OpenCode (same port)
-make publish-npm      # typecheck, pack dry-run, npm publish
-```
+- First request runs the extract (~15 s), then caches it for 5 minutes. `POST /refresh` forces a re-run; `GET /data.json` is the raw payload for scripting; `GET /health` reports status.
+- TUI: `/insights` (or `ctrl+alt+i`) opens the deck, `/contribute` manages sharing.
+- Agent tool: `insights_contribute` with `status | enable | disable | send` — "disable contributions" just works.
 
-Requirements: git, bun, and node with playwright for `verify` (it falls back to `~/dev/datastudio/node_modules/playwright` if none is installed here). The database is opened read-only; nothing here writes to opencode. Publishing to npm needs `npm login` (and `NPM_TOKEN` on the GitHub repo for the tag workflow).
+## Configuration
 
-Environment overrides: `OC_DB` (default `~/.local/share/opencode/opencode.db`), `OC_DEV_ROOT` (default `~/dev`, where the git repos live), `OC_GIT_AUTHORS` (comma-separated author names counted as yours, default `Jud Saoud,judsd`), `OC_INSIGHTS_PORT` (default `4173`), `OC_INSIGHTS_HOST` (default `127.0.0.1`; set `0.0.0.0` to listen on all interfaces — unauthenticated, LAN-visible), `OC_INSIGHTS_TTL_MS` (default `300000`), `OC_INSIGHTS_CACHE` (default `~/.local/share/ocInsights/data.json`). The same host/port/ttl live in `~/.local/share/ocInsights/http.json` (env wins). Plugin options `port` / `host` / `ttlMs` override both. A local path in the `{ "package", "options" }` plugins form is ignored by OpenCode — keep the plugin as a string path and put `host` in `http.json`.
+| Plugin option | Env | Default | Notes |
+|---|---|---|---|
+| `port` | `OC_INSIGHTS_PORT` | `4173` | Deck + API port. |
+| `host` | `OC_INSIGHTS_HOST` | `127.0.0.1` | Set `0.0.0.0` for LAN access — unauthenticated. |
+| `ttlMs` | `OC_INSIGHTS_TTL_MS` | `300000` | Extract cache, 5 min. |
+| `contribute` | `OC_INSIGHTS_CONTRIBUTE` | on | `false` / `0` opts out. Highest precedence. |
 
-## How it fits together
+`~/.local/share/ocInsights/http.json` holds host/port/ttl as a file fallback; env wins, plugin options win over both.
 
-```
-index.ts           root re-export (opencode resolves directory plugins to <dir>/index.ts)
-tui.ts             root re-export for the TUI side (/insights, /contribute)
-plugin/          OpenCode plugin (id oc.insights)
-  ledger hook    every edit/write/patch -> ~/.local/share/ocInsights/edits.jsonl
-  scheduler      auto-contribute: first send ~15 min after load when quiet, then every 6 h (diff-based)
-  agent tool     insights_contribute (status|enable|disable|send)
-  HTTP singleton 127.0.0.1:4173 (or 0.0.0.0)  GET /  GET /data.json  GET /health  POST /refresh  POST /contribute  POST /contribute-toggle (loopback only)
-  on request     plugin/metrics in a Bun Worker -> ~/.local/share/ocInsights/data.json  (~15 s, cached 5 min)
+<details>
+<summary>Advanced extract overrides</summary>
 
-plugin/metrics   one read-only pass over opencode.db + `git log` per repo  ->  data.json
-plugin/build.ts  data.json + template.html                                ->  HTML string
-plugin/cli.ts    extract | build | install | template | diff | contribute
-verify.mjs       opens the built deck in headless Chromium, 116 checks
-template.html    the deck's CSS and JS with @@PLACEHOLDERS@@ where data goes
-```
+- `OC_DB` (default `~/.local/share/opencode/opencode.db`), `OC_DEV_ROOT` (default `~/dev`, where the git repos live), `OC_GIT_AUTHORS` (comma-separated author names counted as yours), `OC_INSIGHTS_CACHE` (default `~/.local/share/ocInsights/data.json`).
 
-Every number in the deck is computed in `plugin/metrics`. The plugin runs that pass in a Bun Worker on request and injects the result into `template.html` (same job as `plugin/build.ts`). If you want to change what is measured, edit `plugin/metrics`; if you want to change how it looks or behaves, edit `template.html` (it is plain HTML + vanilla JS, no framework, no dependencies).
+</details>
 
-## Contributing your data
+## Sharing & privacy
 
-Sharing is on by default: a few minutes after opencode starts (once your
-sessions go quiet), the plugin sends your per-cycle facts to the global
-scorecard at Pragmatikos, then re-sends only what changed every 6 hours. One
-history is anecdote; pooled histories are evidence. Only the twenty fields the
-score needs leave your machine — one row per top-level cycle:
+Sharing is on by default: ~15 minutes after OpenCode starts (once sessions go quiet), the plugin sends per-cycle facts to the global Pragmatikos scorecard, then re-sends only what changed every 6 hours. One history is anecdote; pooled histories are evidence.
+
+Opt out any of: `/contribute` toggle, deck Contribute panel, `OC_INSIGHTS_CONTRIBUTE=0`, or plugin option `contribute: false`.
+
+<details>
+<summary>Exactly what leaves your machine</summary>
+
+One row per top-level cycle, 21 fields:
 
 ```
 cycle_key day model prov role pm pp bm bp
-u a tedits tpaths teerr tcost tship thrs tver tabort latmed
+u a tedits tpaths teerr tcost tship thrs tver tabort latmed tshipe
 ```
 
-`cycle_key` is an opaque hash, not a session id. Never sent: session ids, file
-paths, worktree or project names, prompts, hostnames, usernames, token counts,
-commit data. Your install is a random UUID in
-`~/.local/share/ocInsights/contributor.json`, generated on first use.
+`cycle_key` is an opaque hash, not a session id. Never sent: session ids, file paths, worktree or project names, prompts, hostnames, usernames, token counts, commit data. Your install is a random UUID in `~/.local/share/ocInsights/contributor.json`, generated on first use.
 
-```bash
-make contribute-preview   # build the payload, show the summary, privacy-grep it (no network)
-make contribute           # send changed rows now (or wait for the scheduler)
-bun plugin/cli.ts contribute off     # opt out (also: status, on)
-```
+</details>
 
-Or manage it without the terminal: `/contribute` in the TUI (insight contribution
-settings, send now, open insights), `/insights` (or ctrl+alt+i) to open the deck,
-the deck's Contribute panel toggle, or ask the agent ("disable contributions" runs
-the insights_contribute tool). The deck header chip is hidden by default;
-the Contribute panel has a Show chip button to reveal it.
-Higher-precedence off switches: `OC_INSIGHTS_CONTRIBUTE=0`, or the plugin
-option `contribute: false` (package-form installs only).
+## How it measures
 
-The server component lives in `../pragmaServer` (Cloudflare Worker +
-ClickHouse, write-only: it accepts rows and exposes nothing).
+| Metric | One-line definition |
+|---|---|
+| Active hours | Heartbeat: `min(gap, 10 min)` per message, 60 s for the first. Attention, not wall clock. |
+| Attribution | Session belongs to the model behind most of its assistant messages (ids canonicalised, nothing bucketed as "other"). |
+| Output | File edits: every `edit` / `write` / `patch` tool call. Line counts stopped in June 2026. |
+| Verified / shipped | Verified: a build/test/lint command ran. Shipped: edits landed in your git within 7 days. |
+| Turns to ship | Your prompts per shipped plan → build cycle; failed ships count against their model. |
+| Overall score | Ten axes in six tiers (30/20/15/15/10/10), 0–100 with 50 at pool. |
 
-## What the deck contains
+The deck prints each definition on its card. Read per-model numbers as "how this model performed on the work it was given", not as a benchmark: heavy models get hard tasks, cheap models get lookups.
 
-A global filter bar and section nav under the header, then header KPIs (active hours · turns to ship · file edits · commits shipped · cost · tokens), then in pipeline order: **Time** — monthly hours by project (all worktrees, no "other" bucket; can stack by session role instead) · daily hours by project · tokens per day · work rhythm. **Inputs** — models per day with group-by model / family / provider · who is talking (your prompts vs subagent prompts vs agent replies) · agents and models. **Output** — overall score (ten axes in six tiers weighted 30/20/15/15/10/10, one score out of 100; radar first, legend only on strips) · human turns to ship (your prompts per shipped plan → build cycle; metric strips with a radar toggle) · productivity by model (edits vs cost) · shipping by model (edits vs steering, plus a funnel of how far work got). **Outcome** — shipping in commits (one card; y-axis toggles median lines vs commit count). **Projects** — every worktree, with session depth columns. **Method** — the four judgment calls.
-
-## Global filters
-
-Three controls in the sticky header apply to every card at once and to the KPIs:
-
-- **Window** — all time, or the last 90 / 45 / 30 / 7 days, anchored to the latest day with activity (not the wall clock, so the deck is stable).
-- **Sessions** — all, build, plan, or other agent types. Hours, models per day and every per-model card follow it. Day-level series that have no session role (tokens per day, work rhythm) stay unfiltered by role.
-- **Hide small entries** — under 5 commits on the commit card, under 5 sessions on the model cards, under 5 judged sessions on the turns card, under 5 hours for projects, under 5 active days for models per day. Totals and shares are still computed on the full set.
-
-Per-card controls (group by, metric toggles, the commit card's plan-vs-build split, planner→builder combos and y-axis, the productivity and shipping cards' build-only toggle) stay local and remember their state across filter changes. When a global session role is set, the local build-only toggles hide, because the global scope already decides.
-
-The deck ships raw records (`SESS`, one row per session; `DAYW`, `DAYM`, `DAYU`, `RHYD`, one entry per day) and derives every chart and KPI in the browser from those under the current filter (`derive()` in `template.html`). Extract still writes the pre-aggregated legacy datasets to `data.json` for anyone scripting against it, but the deck no longer reads them.
-
-## Definitions
+<details>
+<summary>Full definitions</summary>
 
 These are the judgment calls. They are printed on the relevant cards too, so a reader of the deck can question them.
 
@@ -119,9 +104,9 @@ These are the judgment calls. They are printed on the relevant cards too, so a r
 
 **Verified / shipped (shipping card).** A session is verified if any shell command matched a build, test, type-check or lint tool (make, pnpm build, tsc, vitest, jest, pytest, playwright test, go test, go vet, cargo test, cargo check, cargo clippy, eslint, biome, ruff, mypy, pyright and similar). A session **shipped** if its edits landed in one of your git commits within 7 days of its start — read from the repositories, not from anything the agent ran. Shipping is judged only for sessions whose edit paths were recorded (see the ledger below); the column is blank for OpenAI providers, which never record them. Time to ship is the median hours from session start to that commit.
 
-**Human turns to ship (turns card).** A cycle is a plan run followed by its build run; a new one starts every time the session returns to plan after building, and sessions that never touch plan or build are a single cycle. A cycle tree is the top-level cycle plus the subagent sessions folded into it — each descendant folds into the cycle whose span contains its first message. The cycle's turns are your prompts in it (child sessions carry exactly one `user` message, the delegation, so human engagement is `u` on top-level rows, and the turn that starts a cycle belongs to that cycle), while its edits, errors, cost and shipping come from the whole tree. Turns to ship is all your turns over judged cycles divided by shipped cycles: an unshipped cycle's turns count against its model, and cycles with no edits are excluded outright, which is what keeps few-turn failures from looking good. Steer share is the share of your turns after the first per cycle; one-shot is shipped cycles that needed only the request and the plan approval, with no corrections during build. A cycle's planner → builder pair is its own plan and build models, so a session that switches models mid-way contributes each cycle to the right pair. The per-10-shipped-edits toggle adjusts for task size. The profile charts default to a relative-to-pool scale: every value is a log2 ratio (log odds for ship % and edit OK %) to its pooled value on a fixed ×4/÷4 span, so ×2 right of the pool line means twice as good on every row and every radar spoke (the middle ring is the pool, 50 on the core score). Min–max is one click away and keeps the per-axis extremes. The three primary axes are turns to ship, ship rate and edits per turn — cost per delivery, reliability of delivery, output per turn; the core score is their normalised mean, 0 to 100. Agent quality (edit reliability, replies per turn) explains them; dollars per costed shipped cycle sits last and is never primary. **Evidence weighting.** Small groups are shrunk toward the pooled value: `adjusted = (n·value + 10·pooled)/(n + 10)` with `n` = shipped cycles for turns and dollars, judged cycles otherwise, so a 2-cycle group nearly vanishes into the population while a 100-cycle group barely moves. The card opens weighted; raw is one click away and tooltips show both. The header KPI is the pool itself, so it stays raw.
+**Human turns to ship (turns card).** A cycle is a plan run followed by its build run; a new one starts every time the session returns to plan after building, and sessions that never touch plan or build are a single cycle. A cycle tree is the top-level cycle plus the subagent sessions folded into it — each descendant folds into the cycle whose span contains its first message. The cycle's turns are your prompts in it (child sessions carry exactly one `user` message, the delegation, so human engagement is `u` on top-level rows, and the turn that starts a cycle belongs to that cycle), while its edits, errors, cost and shipping come from the whole tree. Turns to ship is all your turns over ship-judged cycles divided by shipped cycles: a failed ship's turns count against its model. A judged cycle is ship-judged unless its 7-day ship window is still open (pending — the outcome is not yet knowable) or the window closed on a worktree that is not a scanned repo or received no commit in it (unshippable); pending and unshippable cycles stay in every process axis but leave the ship rate and the per-ship costs. Cycles with no edits are excluded outright, which is what keeps few-turn failures from looking good. Steer share is the share of your turns after the first per cycle; one-shot is shipped cycles that needed only the request and the plan approval, with no corrections during build. A cycle's planner → builder pair is its own plan and build models, so a session that switches models mid-way contributes each cycle to the right pair. The per-10-shipped-edits toggle adjusts for task size. The profile charts default to a relative-to-pool scale: every value is a log2 ratio (log odds for ship % and edit OK %) to its pooled value on a fixed ×4/÷4 span, so ×2 right of the pool line means twice as good on every row and every radar spoke (the middle ring is the pool, 50 on the core score). Min–max is one click away and keeps the per-axis extremes. The three primary axes are turns to ship, ship rate and edits per turn — cost per delivery, reliability of delivery, output per turn; the core score is their normalised mean, 0 to 100. Agent quality (edit reliability, replies per turn) explains them; dollars per costed shipped cycle sits last and is never primary. **Evidence weighting.** Small groups are shrunk toward the pooled value: `adjusted = (n·value + 10·pooled)/(n + 10)` with `n` = shipped cycles for turns and dollars, ship-judged cycles for the ship rate, judged cycles otherwise, so a 2-cycle group nearly vanishes into the population while a 100-cycle group barely moves. The card opens weighted; raw is one click away and tooltips show both. The header KPI is the pool itself, so it stays raw.
 
-**Overall score.** Ten axes in six tiers, weighted 30/20/15/15/10/10: outcome (ship rate, one-shot rate) · cost of a ship (turns and active hours per shipped cycle; dollars per costed shipped cycle — subscription ships that recorded no cost are excluded from dollars only) · precision (tool error rate, abort rate) · discipline (share of judged cycles with a verify command after the last edit) · efficiency (edits per turn) · latency (median seconds per assistant step over valid steps — `time.completed − time.created` between 0 and the 10-minute heartbeat cap). The score is the weighted mean of tier means, 0 to 100 with 50 at pool; every axis is a log ratio (log odds for the three rates) to its pooled value on a fixed ×4/÷4 span. Every axis comes from cycle trees in every view — turns, hours and cost on shipped cycles for the cost tier, tree edits/errors/cost/hours/verified/aborted flags otherwise. Missing axes redistribute within their tier; a tier with no data scores 50 and is marked *. Aborts are tool calls the human stopped (aborted, interrupted, cancelled, permission rejected or declined) and are not counted as errors. Commit-window metrics (hours per commit, lines per commit) are excluded — keyed per commit, not per session group. Same strips/radar mechanics as the turns card, ranked by score, with a top-3 weight-sensitivity line. Setups under 10 judged cycles are listed but never ranked. Click two rank rows (or two radar shapes) to pin them and read the axis-by-axis delta underneath. Everywhere in the deck a prompt is one of your turns on a top-level session; subagent delegation prompts are excluded. Axis labels, spokes and background wedges are green when higher is better and red when lower is better, with the green axes grouped at the top of the radar. The radar defaults to raw magnitudes — outward is more on every axis, so a rim red vertex is worse — and the score still reads better = 100 either way. The all-in turns and dollars per shipped cycle and the edit yield sit in the tooltip, displayed but not scored.
+**Overall score.** Ten axes in six tiers, weighted 30/20/15/15/10/10: outcome (ship rate over ship-judged cycles, one-shot rate) · cost of a ship (turns and active hours per shipped cycle; dollars per costed shipped cycle — subscription ships that recorded no cost are excluded from dollars only) · precision (tool error rate, abort rate) · discipline (share of judged cycles with a verify command after the last edit) · efficiency (edits per turn) · latency (median seconds per assistant step over valid steps — `time.completed − time.created` between 0 and the 10-minute heartbeat cap). The score is the weighted mean of tier means, 0 to 100 with 50 at pool; every axis is a log ratio (log odds for the three rates) to its pooled value on a fixed ×4/÷4 span. Every axis comes from cycle trees in every view — turns, hours and cost on shipped cycles for the cost tier, tree edits/errors/cost/hours/verified/aborted flags otherwise. Missing axes redistribute within their tier; a tier with no data scores 50 and is marked *. Aborts are tool calls the human stopped (aborted, interrupted, cancelled, permission rejected or declined) and are not counted as errors. Commit-window metrics (hours per commit, lines per commit) are excluded — keyed per commit, not per session group. Same strips/radar mechanics as the turns card, ranked by score, with a top-3 weight-sensitivity line. Setups under 10 judged cycles are listed but never ranked. Click two rank rows (or two radar shapes) to pin them and read the axis-by-axis delta underneath. Everywhere in the deck a prompt is one of your turns on a top-level session; subagent delegation prompts are excluded. Axis labels, spokes and background wedges are green when higher is better and red when lower is better, with the green axes grouped at the top of the radar. The radar defaults to raw magnitudes — outward is more on every axis, so a rim red vertex is worse — and the score still reads better = 100 either way. The all-in turns and dollars per shipped cycle (ship-judged work included) and the edit yield sit in the tooltip, displayed but not scored.
 
 **Commits (commit cards).** Your own commits, all branches, merges and bots excluded, read from each repo with `git log --numstat`. A commit's window runs from the previous commit in the same repo to the commit, capped at 72 h, plus 5 min grace. The commit is credited to the cycles whose recorded edits inside the window touched files in it, weighted by how many of its files each touched; each share goes to the cycle phase's dominant model. Cycles that were active but touched none of the commit's files get **no credit** — they advised, they did not ship — and are counted as *advised only*. Cycles that edited in the window but never had a path recorded fall back to a split by active minutes, flagged *by time* in the summary line and in each model's tooltip. Commits with no agent activity at all are the manual bucket. Prompts per commit credits cycle prompts to the window in proportion to active time. Lines come from git, so they cover every era.
 
@@ -129,6 +114,73 @@ These are the judgment calls. They are printed on the relevant cards too, so a r
 
 **Tokens per day.** Fresh tokens = input + output + reasoning; cache reads are reported separately because they are 67× larger and would flatten everything. Per-message token blocks exist on only ~10% of messages, so each session's tokens are split across the days its messages fall on, weighted by active time.
 
-## Caveats that do not go away
+</details>
+
+<details>
+<summary>Global filters</summary>
+
+Three controls in the sticky header apply to every card at once and to the KPIs:
+
+- **Window** — all time, or the last 90 / 45 / 30 / 7 days, anchored to the latest day with activity (not the wall clock, so the deck is stable).
+- **Sessions** — all, build, plan, or other agent types. Hours, models per day and every per-model card follow it. Day-level series that have no session role (tokens per day, work rhythm) stay unfiltered by role.
+- **Hide small entries** — under 5 commits on the commit card, under 5 sessions on the model cards, under 5 judged sessions on the turns card, under 5 hours for projects, under 5 active days for models per day. Totals and shares are still computed on the full set.
+
+Per-card controls (group by, metric toggles, the commit card's plan-vs-build split, planner→builder combos and y-axis, the productivity and shipping cards' build-only toggle) stay local and remember their state across filter changes. When a global session role is set, the local build-only toggles hide, because the global scope already decides.
+
+</details>
+
+<details>
+<summary>Caveats</summary>
 
 Selection bias: heavy models get hard tasks, cheap models get lookups. Models were used in different eras with different tooling. Task size confounds turns to ship — thirty turns for a feature beats two for a typo — which is why the turns card also reads turns per 10 shipped edits. Commit attribution is evidence-based but still not proof — a commit can include hand edits made alongside the agent, a window can hold more than one feature, and files changed by shell commands (generated code, lockfiles) do not appear as edits. Read every per-model number as "how this model performed on the work it was given", not as a benchmark.
+
+</details>
+
+## Requirements & notes
+
+- OpenCode 1.18+ (v2 plugin API), with `bun` and `git` available.
+- The database is opened read-only; nothing here writes to OpenCode.
+- The server listens on loopback by default; `0.0.0.0` is opt-in and unauthenticated.
+- The deck shows cost figures and project paths — think before sharing a snapshot with a different audience.
+- Formerly ocProductivity: on first load the plugin renames `~/.local/share/ocProductivity` to `~/.local/share/ocInsights` if the new path is absent, so the install UUID and edit ledger survive.
+
+## Development
+
+See `AGENTS.md` for the full contributor guide (architecture, metric pipeline, gotchas).
+
+<details>
+<summary>Repo layout & commands</summary>
+
+```
+index.ts           root re-export (opencode resolves directory plugins to <dir>/index.ts)
+tui.ts             root re-export for the TUI side (/insights, /contribute)
+plugin/            OpenCode plugin (id oc.insights)
+  ledger hook      every edit/write/patch -> ~/.local/share/ocInsights/edits.jsonl
+  scheduler        auto-contribute: first send ~15 min after load when quiet, then every 6 h (diff-based)
+  agent tool       insights_contribute (status|enable|disable|send)
+  HTTP singleton   127.0.0.1:4173  GET /  GET /data.json  GET /health  POST /refresh  POST /contribute  POST /contribute-toggle
+  on request       plugin/metrics in a Bun Worker -> ~/.local/share/ocInsights/data.json (~15 s, cached 5 min)
+
+plugin/metrics     one read-only pass over opencode.db + `git log` per repo -> data.json
+plugin/build.ts    data.json + template.html -> HTML string
+plugin/cli.ts      extract | build | install | template | diff | contribute
+verify.mjs         opens the built deck in headless Chromium, 116 checks
+template.html      the deck's CSS and JS with @@PLACEHOLDERS@@ where data goes
+```
+
+```bash
+make install-plugin   # add this repo to global opencode plugins; restart opencode
+make                  # extract -> build -> verify (about 20 seconds)
+make serve            # HTTP server without OpenCode (same port)
+make publish-npm      # typecheck, pack dry-run, npm publish
+```
+
+Verify needs node with Playwright (it falls back to `~/dev/datastudio/node_modules/playwright` if none is installed here). Publishing to npm needs `npm login` (and `NPM_TOKEN` on the GitHub repo for the tag workflow).
+
+</details>
+
+## Links
+
+- [Changelog](CHANGELOG.md)
+- [License (MIT)](LICENSE)
+- [npm package](https://www.npmjs.com/package/@pfoundation/ocinsights)
