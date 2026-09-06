@@ -1,8 +1,8 @@
 name: publish
 
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
 
 jobs:
   publish:
@@ -11,6 +11,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.8
@@ -20,15 +22,24 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - run: bun install --frozen-lockfile
       - name: Set version from tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
+          TAG="${RELEASE_TAG#v}"
           if ! [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid version from tag: $GITHUB_REF_NAME"; exit 1
+            echo "Invalid version from tag: $RELEASE_TAG"; exit 1
+          fi
+          if [[ "$PRERELEASE" == "true" ]] || [[ "$TAG" == *-* ]]; then
+            DIST_TAG="next"
+          else
+            DIST_TAG="latest"
           fi
           npm pkg set version="$TAG"
-          echo "publishing $(node -p "require('./package.json').version") from $GITHUB_REF_NAME"
+          echo "DIST_TAG=$DIST_TAG" >> "$GITHUB_ENV"
+          echo "publishing $(node -p "require('./package.json').version") from $RELEASE_TAG (prerelease: $PRERELEASE) with dist-tag $DIST_TAG"
       - run: bun run typecheck
       - run: npm pack --dry-run
-      - run: npm publish --access public
+      - run: npm publish --access public --tag "$DIST_TAG"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
