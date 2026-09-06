@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { CONTRIB_URL, REPO_ROOT, SHARE_DIR } from "./config.ts";
 import { getData } from "./extract.ts";
 
-export const CONTRIB_SCHEMA = 1;
+export const CONTRIB_SCHEMA = 2;
 
 // Auto-send cadence, shared by the scheduler and the status computation.
 // FIRST_DELAY is the first-install grace window: nothing auto-sends until
@@ -45,6 +45,7 @@ export const CONTRIB_COLS = [
   "tver",
   "tabort",
   "latmed",
+  "tshipe",
 ] as const;
 
 export type ContribPayload = {
@@ -337,6 +338,7 @@ export function buildPayload(
       "tver",
       "tabort",
       "latmed",
+      "tshipe",
       "pm",
       "pp",
       "bm",
@@ -385,6 +387,7 @@ export function buildPayload(
       c[CC.tver] ? 1 : 0,
       c[CC.tabort] ? 1 : 0,
       c[CC.latmed] as number,
+      c[CC.tshipe] as number,
     ]);
   }
   return {
@@ -484,8 +487,7 @@ export async function runContribute(opts: {
       ...sum,
       changed: changed.length,
       sent: 0,
-      error:
-        "contribute URL not configured (--url or OC_INSIGHTS_CONTRIB_URL)",
+      error: "contribute URL not configured (--url or OC_INSIGHTS_CONTRIB_URL)",
     };
   }
   if (!changed.length) {

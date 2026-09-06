@@ -35,7 +35,7 @@ contribute:                       ## submit anonymised cycle facts to the global
 	bun plugin/cli.ts contribute --data data.json
 contribute-preview:               ## build the contribution payload without sending, then privacy-grep it
 	bun plugin/cli.ts contribute --data data.json --dry-run --out /tmp/opencode/contrib-preview.json
-	grep -q '"cols":\["cycle_key","day","model","prov","role","pm","pp","bm","bp","u","a","tedits","tpaths","teerr","tcost","tship","thrs","tver","tabort","latmed"\]' /tmp/opencode/contrib-preview.json
+	grep -q '"cols":\["cycle_key","day","model","prov","role","pm","pp","bm","bp","u","a","tedits","tpaths","teerr","tcost","tship","thrs","tver","tabort","latmed","tshipe"\]' /tmp/opencode/contrib-preview.json
 	! grep -E -q '/home|ses_|/Users/' /tmp/opencode/contrib-preview.json
 clean:
 	rm -f data.json opencode_time_full.html

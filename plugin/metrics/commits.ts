@@ -111,7 +111,11 @@ export function attributeCommits(
   meta: Map<string, SessionMeta>,
   startDay: string,
   editsCyc: Map<string, [number, string][]>,
-): [CommitData, Map<string, number[]>] {
+): [
+  CommitData,
+  Map<string, number[]>,
+  { repos: string[]; commits: Map<string, number[]> },
+] {
   const since = isoMs(startDay) / 1000;
   const WT = new Map<string, Ev[]>();
   const ED = new Map<string, Ed[]>();
@@ -183,11 +187,20 @@ export function attributeCommits(
   let total = 0;
   const basis = new Counter<string>();
   const shipped = new Map<string, number[]>();
+  // Attributable commit timestamps per scanned repo (author + since filters,
+  // before the cross-repo hash dedup): the ship-judged gate checks whether a
+  // cycle's window held any commit its edits could have landed in.
+  const repoCommits = new Map<string, number[]>();
 
   for (const repo of repos) {
-    const cs = gitCommits(repo)
-      .filter((c) => GIT_AUTHORS.has(c.an) && c.at >= since && !seen.has(c.h))
+    const mine = gitCommits(repo)
+      .filter((c) => GIT_AUTHORS.has(c.an) && c.at >= since)
       .sort((a, b) => a.at - b.at);
+    repoCommits.set(
+      repo,
+      mine.map((c) => c.at),
+    );
+    const cs = mine.filter((c) => !seen.has(c.h));
     for (const c of cs) seen.add(c.h);
     const ev = WT.get(repo) ?? [];
     const ed = ED.get(repo) ?? [];
@@ -338,6 +351,7 @@ export function attributeCommits(
       basis: basisObj,
     },
     shipped,
+    { repos, commits: repoCommits },
   ];
 }
 

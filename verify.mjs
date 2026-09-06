@@ -205,13 +205,15 @@ const cyc = await page.evaluate(() => {
   const SC2 = {}; SESS_COLS.forEach((c, i) => SC2[c] = i);
   const per = {};
   CYC.forEach((c) => per[c[CC.sess]] = (per[c[CC.sess]] || 0) + 1);
-  const j = CYC.filter((c) => !SESS[c[CC.sess]][SC2.child] && c[CC.a] > 0 && c[CC.tedits] > 0 && c[CC.tpaths]);
+  const j = CYC.filter((c) => !SESS[c[CC.sess]][SC2.child] && c[CC.a] > 0 && c[CC.tedits] > 0 && c[CC.tpaths] && c[CC.tshipe] === 0);
   const sh = j.filter((c) => c[CC.tship]);
   return { n: CYC.length, s: SESS.length, multi: Math.max(...Object.values(per)), kpi: (j.reduce((a, c) => a + c[CC.u], 0) / sh.length).toFixed(1) };
 });
 check("cycles dataset", cyc.n >= cyc.s && cyc.multi > 1, `${cyc.n} cycles, ${cyc.s} sessions, max ${cyc.multi}/session`);
 check("KPI matches cycle recomputation", cyc.kpi === (await page.locator("#k_tts").innerText()).trim(), `page ${await page.locator("#k_tts").innerText()}, cyc ${cyc.kpi}`);
 check("turns card counts cycles", (await page.locator("#tsum").innerText()).includes("judged cycles"));
+const tsumNums = ((await page.locator("#tsum").innerText()).match(/([\d,]+) judged cycles.*?([\d,]+) ship-judged \((\d+) pending, (\d+) unshippable\)/) || []).slice(1).map((v) => parseInt(v.replace(/,/g, ""), 10));
+check("turns ship-judged arithmetic", tsumNums.length === 4 && tsumNums[1] + tsumNums[2] + tsumNums[3] === tsumNums[0], tsumNums.join("/"));
 check("funnel counts cycles in combo", (await page.locator("#sfund").innerText()).startsWith("Share of cycles"));
 await click("#srole [data-r=off]");
 check("funnel counts sessions when off", (await page.locator("#sfund").innerText()).startsWith("Share of sessions"));
@@ -262,14 +264,27 @@ const wsum = ((osum.match(/weights ([\d/]+)/) || [, ""])[1]).split("/").filter(B
 check("overall weights sum to 100", wsum.length === 6 && wsum.reduce((a, b) => a + b, 0) === 100, osum.slice(0, 160));
 check("overall pool scores 50", (await page.evaluate(() => window.__opoolScore)) === 50);
 check("overall sensitivity line", /top-3 (stable|sensitive) to ±10 tier weights/.test(osum), osum.slice(0, 220));
+const osumNums = (osum.match(/([\d,]+) judged cycles.*?([\d,]+) ship-judged \((\d+) pending, (\d+) unshippable\)/) || []).slice(1).map((v) => parseInt(v.replace(/,/g, ""), 10));
+check("overall ship-judged arithmetic", osumNums.length === 4 && osumNums[1] + osumNums[2] + osumNums[3] === osumNums[0], osumNums.join("/"));
 const otiers = await page.locator("#otb tr").evaluateAll((rs) => rs.flatMap((r) => [...r.children].slice(4, 10).map((td) => td.innerText)));
 check("overall tier scores in range", otiers.length > 0 && otiers.every((v) => /^\d+[*]?$/.test(v) && +v.replace("*", "") >= 0 && +v.replace("*", "") <= 100), otiers.slice(0, 8).join(","));
 check("overall imputed tiers marked 50*", otiers.filter((v) => v.includes("*")).every((v) => v === "50*"));
 const noCost = await page.locator("#otb tr").evaluateAll((rs) => rs.filter((r) => [...r.children][14].innerText === "—").map((r) => [...r.children][3].innerText));
 check("overall zero-cost scored not dropped", noCost.length > 0 && noCost.every((v) => v !== "—"), noCost.join(",") || "no zero-cost group");
 const noCostIdx = await page.locator("#otb tr").evaluateAll((rs) => rs.findIndex((r) => [...r.children][14].innerText === "—"));
-if (noCostIdx >= 0) { await page.locator("#otb tr").nth(noCostIdx).hover(); await page.waitForTimeout(150); }
-check("overall zero-cost flagged", noCostIdx < 0 || (await page.locator("#tip").innerText()).includes("cost unknown"));
+let costFlagged = noCostIdx < 0;
+if (!costFlagged) {
+  // Unshipped groups also show — for $/ship; the flag lives only on groups
+  // that shipped at zero recorded cost, so hover each — row until one flags.
+  const idxs = await page.locator("#otb tr").evaluateAll((rs) => rs.map((r, i) => [...r.children][14].innerText === "—" ? i : -1).filter((i) => i >= 0));
+  for (const i of idxs) {
+    await page.locator("#otb tr").nth(i).hover(); await page.waitForTimeout(120);
+    if ((await page.locator("#tip").innerText()).includes("cost unknown")) { costFlagged = true; break; }
+  }
+}
+check("overall zero-cost flagged", costFlagged);
+await page.locator("#otb tr").first().hover(); await page.waitForTimeout(150);
+check("overall tooltip shows ship-judged", (await page.locator("#tip").innerText()).includes("Ship-judged") && (await page.locator("#tip").innerText()).includes("pending"));
 await page.mouse.move(5, 5);
 await click("#oev [data-e=raw]");
 const zeroErr = await page.locator("#otb tr").evaluateAll((rs) => rs.filter((r) => [...r.children][15].innerText === "0.0%").map((r) => [...r.children][3].innerText + "/" + [...r.children][6].innerText));

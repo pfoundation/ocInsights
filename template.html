@@ -841,7 +841,7 @@
               <div class="cbody">
                 <div class="kpi" id="k_tts">@@tts@@</div>
                 <div class="ksub mono" id="k_ttssub">
-                  @@tshipped@@ shipped of @@tjudged@@ judged cycles &middot;
+                  @@tshipped@@ shipped of @@tshipj@@ ship-judged cycles &middot;
                   @@autonomy@@&times; replies per turn
                 </div>
               </div>
@@ -1252,8 +1252,9 @@
               <details>
                 <summary>Definitions and limits</summary>
                 <p class="dim">
-                  Tiers, weights 30/20/15/15/10/10: outcome (ship rate, one-shot
-                  rate) · cost of a ship (turns and active hours per shipped
+                  Tiers, weights 30/20/15/15/10/10: outcome (ship rate over
+                  ship-judged cycles, one-shot rate) · cost of a ship (turns
+                  and active hours per shipped
                   cycle; dollars per costed shipped cycle) · precision (tool
                   error rate, abort rate) · discipline (share of judged cycles
                   with a verify command after the last edit) · efficiency (edits
@@ -1276,7 +1277,7 @@
                   click away, resting emphasis by score. Same caveats too: era,
                   selection, and task size, which the per-turn axes only partly
                   adjust for. The all-in turns and dollars per shipped cycle
-                  (unshipped work included) and the edit yield (share of edit
+                  (ship-judged work included) and the edit yield (share of edit
                   volume that landed) sit in the tooltip, displayed but not
                   scored.
                 </p>
@@ -1428,16 +1429,20 @@
                   span contains its first message. The cycle's turns are your
                   prompts in it (the turn that starts a cycle belongs to that
                   cycle); its edits, errors, cost and shipping come from the
-                  whole tree. Turns to ship is all your turns over judged cycles
-                  divided by shipped cycles, so an unshipped cycle's turns count
-                  against its model. Steer share is the share of your turns
+                  whole tree. Turns to ship is all your turns over ship-judged
+                  cycles divided by shipped cycles, so a failed ship's turns
+                  count against its model. Steer share is the share of your turns
                   after the first in each cycle; one-shot is shipped cycles that
                   needed only the request and the plan approval, with no
                   corrections during build. A cycle is judged when its tree
                   edited and at least one edit had a recorded path —
                   question-answering and abandoned cycles with no edits are
                   excluded outright, which is what keeps few-turn failures from
-                  looking good.
+                  looking good. A judged cycle is ship-judged unless its 7-day
+                  ship window is still open (pending) or closed on a worktree
+                  that is not a scanned repo or received no commit in it
+                  (unshippable); both stay in every process axis but leave the
+                  ship rate and the per-ship costs.
                 </p>
                 <p class="dim">
                   Task size confounds the per-cycle view (thirty turns for a
@@ -2175,12 +2180,12 @@
        // cycComboRow takes the cycle's own pair (a combo is a per-cycle fact). Sides own tree facts by
        // build > plan > other priority, mirroring phaseRow's ownerT.
        const cycHRow=c=>{const r=SESS[c[CC.sess]].slice();r[SC.u]=c[CC.u];r[SC.a]=c[CC.a];r[SC.pm]=c[CC.pm];
-        r[SC.tedits]=c[CC.tedits];r[SC.teerr]=c[CC.teerr];r[SC.tcost]=c[CC.tcost];r[SC.tship]=c[CC.tship];r[SC.tpaths]=c[CC.tpaths];r[SC.thrs]=c[CC.thrs];r[SC.tver]=c[CC.tver];r[SC.tabort]=c[CC.tabort];r[SC.latmed]=c[CC.latmed];return r};
+        r[SC.tedits]=c[CC.tedits];r[SC.teerr]=c[CC.teerr];r[SC.tcost]=c[CC.tcost];r[SC.tship]=c[CC.tship];r[SC.tpaths]=c[CC.tpaths];r[SC.thrs]=c[CC.thrs];r[SC.tver]=c[CC.tver];r[SC.tabort]=c[CC.tabort];r[SC.tshipe]=c[CC.tshipe];r[SC.latmed]=c[CC.latmed];return r};
        const cycSideRow=(c,R)=>{const si=c[CC.sess],pm=(PM[si]||{})[R];if(!pm)return null;const r=SESS[si].slice();
         r[SC.role]=R;r[SC.model]=pm[0];r[SC.prov]=pm[1];
         r[SC.u]=R===1?c[CC.pu]:R===2?c[CC.bu]:c[CC.u]-c[CC.pu]-c[CC.bu];
         r[SC.a]=R===1?c[CC.pa]:R===2?c[CC.ba]:c[CC.a]-c[CC.pa]-c[CC.ba];
-        r[SC.tedits]=c[CC.tedits];r[SC.teerr]=c[CC.teerr];r[SC.tcost]=c[CC.tcost];r[SC.thrs]=c[CC.thrs];r[SC.tver]=c[CC.tver];r[SC.tabort]=c[CC.tabort];
+        r[SC.tedits]=c[CC.tedits];r[SC.teerr]=c[CC.teerr];r[SC.tcost]=c[CC.tcost];r[SC.thrs]=c[CC.thrs];r[SC.tver]=c[CC.tver];r[SC.tabort]=c[CC.tabort];r[SC.tshipe]=c[CC.tshipe];
         r[SC.latmed]=R===1?c[CC.platmed]:R===2?c[CC.blatmed]:c[CC.latmed];r[SC.pm]=c[CC.pm];
         const ownerT=c[CC.bm]>=0?R===2:c[CC.pm]>=0?R===1:R===0;
         if(ownerT){r[SC.tship]=c[CC.tship];r[SC.tpaths]=c[CC.tpaths]}else{r[SC.tship]=0;r[SC.tpaths]=0}return r};
@@ -2191,7 +2196,7 @@
         r[SC.lines]=c[CC.lines];
         r[SC.pm]=c[CC.pm];r[SC.pp]=c[CC.pp];r[SC.bm]=c[CC.bm];r[SC.bp]=c[CC.bp];
         r[SC.shipped]=c[CC.shipped];r[SC.lag]=c[CC.lag];r[SC.paths]=c[CC.paths];
-        r[SC.kids]=c[CC.kids];r[SC.tedits]=c[CC.tedits];r[SC.teerr]=c[CC.teerr];r[SC.tcost]=c[CC.tcost];r[SC.tship]=c[CC.tship];r[SC.tpaths]=c[CC.tpaths];r[SC.thrs]=c[CC.thrs];r[SC.tver]=c[CC.tver];r[SC.tabort]=c[CC.tabort];r[SC.latmed]=c[CC.latmed];
+        r[SC.kids]=c[CC.kids];r[SC.tedits]=c[CC.tedits];r[SC.teerr]=c[CC.teerr];r[SC.tcost]=c[CC.tcost];r[SC.tship]=c[CC.tship];r[SC.tpaths]=c[CC.tpaths];r[SC.thrs]=c[CC.thrs];r[SC.tver]=c[CC.tver];r[SC.tabort]=c[CC.tabort];r[SC.tshipe]=c[CC.tshipe];r[SC.latmed]=c[CC.latmed];
         return r};
        const sm=(k,rows)=>rows.reduce((a,r)=>a+r[SC[k]],0);
        const byW={};SESSW.forEach(r=>{const w=IDX.wt[r[SC.wt]];(byW[w]||(byW[w]=[])).push(r)});
@@ -2210,13 +2215,13 @@
        if(FILTER.small)for(const d in DMODELS.day)for(const k in DMODELS.day[d])if(mdays[k]<5)delete DMODELS.day[d][k];
        UAM={};SESSW.forEach(r=>{const mo=r[SC.day].slice(0,7);const u=UAM[mo]||(UAM[mo]=[0,0,0]);u[r[SC.child]?1:0]+=r[SC.u];u[2]+=r[SC.a]});UAMONTHS=Object.keys(UAM).sort();
        const M=r=>IDX.model[r[SC.model]],P=r=>IDX.prov[r[SC.prov]];
-       function aggBy(rows,hrows,keyFn,extraFn){if(typeof hrows==='function'){extraFn=keyFn;keyFn=hrows;hrows=rows}const G={};const mk=r=>({...extraFn(r),sess:0,hrs:0,u:0,a:0,err:0,cost:0,chrs:0,cedits:0,edits:0,eerr:0,files:0,reads:0,bash:0,tools:0,terr:0,vercalls:0,commits:0,coded:0,lsess:0,lhrs:0,lines:0,s_noedit:0,s_edit:0,s_ver:0,s_commit:0,s_paths:0,lags:[],hsess:0,hu:0,ha:0,hjudged:0,hshipped:0,hshipped_costed:0,hu_ship:0,hedits:0,hedits_ship:0,hteerr:0,hcost:0,hcost_ship:0,hhrs:0,hhrs_ship:0,hver:0,habort:0,hone:0,hu_all:0,turnsShip:[],latBag:[]});
+       function aggBy(rows,hrows,keyFn,extraFn){if(typeof hrows==='function'){extraFn=keyFn;keyFn=hrows;hrows=rows}const G={};const mk=r=>({...extraFn(r),sess:0,hrs:0,u:0,a:0,err:0,cost:0,chrs:0,cedits:0,edits:0,eerr:0,files:0,reads:0,bash:0,tools:0,terr:0,vercalls:0,commits:0,coded:0,lsess:0,lhrs:0,lines:0,s_noedit:0,s_edit:0,s_ver:0,s_commit:0,s_paths:0,lags:[],hsess:0,hu:0,ha:0,hjudged:0,hshipped:0,hshipped_costed:0,hu_ship:0,hedits:0,hedits_ship:0,hteerr:0,hcost:0,hcost_ship:0,hhrs:0,hhrs_ship:0,hver:0,habort:0,hshipj:0,hshipu:0,hshipcost:0,hpend:0,himposs:0,hone:0,hu_all:0,turnsShip:[],latBag:[]});
         rows.forEach(r=>{if(!r[SC.a])return;const key=keyFn(r);const g=G[key]||(G[key]=mk(r));
         g.sess++;g.hrs+=r[SC.hrs];g.u+=r[SC.u];g.a+=r[SC.a];g.err+=r[SC.err];g.cost+=r[SC.cost];if(r[SC.cost]>0){g.chrs+=r[SC.hrs];g.cedits+=r[SC.edits]}g.edits+=r[SC.edits];g.eerr+=r[SC.eerr];g.files+=r[SC.files];g.reads+=r[SC.reads];g.bash+=r[SC.bash];g.tools+=r[SC.tools];g.terr+=r[SC.terr];g.vercalls+=r[SC.ver];g.commits+=r[SC.commit];
         const ed=r[SC.edits]>0,v=r[SC.ver]>0,shp=!!r[SC.shipped];if(ed)g.coded++;if(r[SC.lines]>=0){g.lsess++;g.lhrs+=r[SC.hrs];g.lines+=r[SC.lines]}
         g.s_noedit+=ed?0:1;g.s_edit+=(ed&&!v&&!shp)?1:0;g.s_ver+=(ed&&v&&!shp)?1:0;g.s_commit+=(ed&&shp)?1:0;g.s_paths+=(ed&&r[SC.paths])?1:0;if(ed&&shp)g.lags.push(r[SC.lag])});
        hrows.forEach(r=>{if(!r[SC.a])return;const key=keyFn(r);const g=G[key]||(G[key]=mk(r));
-        if(!r[SC.child]){g.hsess++;g.hu_all+=r[SC.u];if(r[SC.tedits]>0&&r[SC.tpaths]){g.hu+=r[SC.u];g.ha+=r[SC.a];g.hjudged++;g.hedits+=r[SC.tedits];g.hteerr+=r[SC.teerr];g.hcost+=r[SC.tcost];g.hhrs+=r[SC.thrs]||0;g.hver+=r[SC.tver]?1:0;g.habort+=r[SC.tabort]?1:0;if(r[SC.latmed]>=0)g.latBag.push([r[SC.latmed],r[SC.a]||1]);if(r[SC.tship]){g.hshipped++;if(r[SC.tcost]>0)g.hshipped_costed++;g.hu_ship+=r[SC.u];g.hedits_ship+=r[SC.tedits];g.hhrs_ship+=r[SC.thrs]||0;g.hcost_ship+=r[SC.tcost]||0;g.turnsShip.push(r[SC.u]);if(r[SC.pm]>=0?r[SC.u]<=2:r[SC.u]===1)g.hone++}}}});
+        if(!r[SC.child]){g.hsess++;g.hu_all+=r[SC.u];if(r[SC.tedits]>0&&r[SC.tpaths]){g.hu+=r[SC.u];g.ha+=r[SC.a];g.hjudged++;g.hedits+=r[SC.tedits];g.hteerr+=r[SC.teerr];g.hcost+=r[SC.tcost];g.hhrs+=r[SC.thrs]||0;g.hver+=r[SC.tver]?1:0;g.habort+=r[SC.tabort]?1:0;const ex=r[SC.tshipe]||0;if(ex===0){g.hshipj++;g.hshipu+=r[SC.u];g.hshipcost+=r[SC.tcost]}else if(ex===1)g.hpend++;else g.himposs++;if(r[SC.latmed]>=0)g.latBag.push([r[SC.latmed],r[SC.a]||1]);if(r[SC.tship]){g.hshipped++;if(r[SC.tcost]>0)g.hshipped_costed++;g.hu_ship+=r[SC.u];g.hedits_ship+=r[SC.tedits];g.hhrs_ship+=r[SC.thrs]||0;g.hcost_ship+=r[SC.tcost]||0;g.turnsShip.push(r[SC.u]);if(r[SC.pm]>=0?r[SC.u]<=2:r[SC.u]===1)g.hone++}}}});
         let out=Object.values(G).map(g=>{const l=g.lags.sort((a,b)=>a-b);return {...g,ship_lag_med:l.length?l[l.length>>1]:null}});if(FILTER.small)out=out.filter(g=>g.sess>=5);return out}
        const roleF=FILTER.role==='build'?2:FILTER.role==='plan'?1:0;
        const hOff=FILTER.role==='all'?CYCW.map(cycHRow):CYCW.map(c=>cycSideRow(c,roleF)).filter(Boolean);
@@ -2229,18 +2234,18 @@
        const totalHr=Object.values(DHRS).reduce((a,b)=>a+b,0);
        const msgs=FILTER.role==='all'?WDAYS.reduce((a,d)=>a+((DAYU[d]||[0,0,0]).reduce((x,y)=>x+y,0)),0):sm('u',SESSW)+sm('a',SESSW);
        const uTop=SESSW.filter(r=>!r[SC.child]).reduce((a,r)=>a+r[SC.u],0),replies=sm('a',SESSW);
-       const tjudged=hOff.filter(r=>!r[SC.child]&&r[SC.a]&&r[SC.tedits]>0&&r[SC.tpaths]),tship=tjudged.filter(r=>r[SC.tship]),thu=tjudged.reduce((a,r)=>a+r[SC.u],0);
+       const tjudged=hOff.filter(r=>!r[SC.child]&&r[SC.a]&&r[SC.tedits]>0&&r[SC.tpaths]),tshipj=tjudged.filter(r=>(r[SC.tshipe]||0)===0),tship=tjudged.filter(r=>r[SC.tship]),thu=tshipj.reduce((a,r)=>a+r[SC.u],0);
        const mh=mo=>Object.values(HM[mo]||{}).reduce((x,y)=>x+y,0);const peak=MONTHS.slice().sort((a,b)=>mh(b)-mh(a))[0];
        const edits=sm('edits',SESSW),editSess=SESSW.filter(r=>r[SC.edits]>0).length;
        const cut=FILTER.win?Date.parse(WSTART)/1000:0;const recN=CM.recs.filter(r=>r[3]>=cut).length,manN=CM.manual.filter(m=>m[0]>=cut&&!m[2]).length;
-       KPI={totalHr,activeDays:Object.keys(DHRS).length,span:WDAYS.length,msgs,sessions:SESSW.length,cost:sm('cost',SESSW),fresh:sm('fresh',SESSW),cacheR:sm('cacheR',SESSW),cacheW:sm('cacheW',SESSW),uTop,replies,tts:tship.length?thu/tship.length:null,tjudged:tjudged.length,tshipped:tship.length,peak,peakHr:peak?mh(peak):0,edits,editSess,recN,manN,commitN:recN+manN};
+       KPI={totalHr,activeDays:Object.keys(DHRS).length,span:WDAYS.length,msgs,sessions:SESSW.length,cost:sm('cost',SESSW),fresh:sm('fresh',SESSW),cacheR:sm('cacheR',SESSW),cacheW:sm('cacheW',SESSW),uTop,replies,tts:tship.length?thu/tship.length:null,tshipj:tshipj.length,tshipped:tship.length,peak,peakHr:peak?mh(peak):0,edits,editSess,recN,manN,commitN:recN+manN};
        renderKPI()}
       const tk=v=>v>=1e9?(v/1e9).toFixed(1)+'B':v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'k':String(Math.round(v));
       const $id=id=>document.getElementById(id);const st=(id,t)=>{const e=$id(id);if(e)e.textContent=t};const sh=(id,x)=>{const e=$id(id);if(e)e.innerHTML=x};
       function renderKPI(){const k=KPI;const scope=(FILTER.role==='all'?'':ROLE_LABEL[FILTER.role]+', ')+WLABEL;
        st('k_badge',`${k.totalHr.toFixed(2)} h · ${k.sessions.toLocaleString()} sess · $${Math.round(k.cost).toLocaleString()} · ${tk(k.fresh)} tok`);
        st('k_range',`${WSTART} to ${RANGE.end}`);st('k_days',`${k.activeDays} active days of ${k.span}`);st('k_total',k.totalHr.toFixed(2)+' h');st('k_msgs',k.msgs.toLocaleString()+' messages');
-       st('k_tts',k.tts===null?'—':k.tts.toFixed(1));sh('k_ttssub',`${k.tshipped.toLocaleString()} shipped of ${k.tjudged.toLocaleString()} judged cycles &middot; ${(k.replies/Math.max(k.uTop,1)).toFixed(1)}&times; replies per turn`);
+       st('k_tts',k.tts===null?'—':k.tts.toFixed(1));sh('k_ttssub',`${k.tshipped.toLocaleString()} shipped of ${k.tshipj.toLocaleString()} ship-judged cycles &middot; ${(k.replies/Math.max(k.uTop,1)).toFixed(1)}&times; replies per turn`);
        st('k_fresh',tk(k.fresh));st('k_cache',`${tk(k.cacheR)} cache reads · ${tk(k.cacheW)} cache writes`);
        st('k_edits',k.edits.toLocaleString());st('k_editssub',`${(k.edits/Math.max(k.totalHr,0.01)).toFixed(1)} / h · ${k.editSess.toLocaleString()} sessions with edits`);
        st('k_commits',String(k.recN));st('k_commitssub',`${(100*k.recN/Math.max(k.commitN,1)).toFixed(0)}% of ${k.commitN} · ${k.manN} manual`);
@@ -2567,10 +2572,10 @@
       const wstr=P.tiers?P.tiers.map(t=>t.w).join('/'):'',top8=new Set(rg.map(g=>g.k));
       if(sv){strips(ranked,AXS,top8,pool,RR,emph);document.getElementById(P.ids.snote).textContent=`${ranked.length} ranked groups on ${tev==='weighted'?'weighted':'raw'} axes${torient==='better'?', better to the right':', ascending with the better end arrowed'}. Top 8 by judged cycles solid with connector lines, rest hollow. ${tscale==='relative'?'Solid line is the pool; every row spans the same ×4/÷4 range.':'Dashed ticks are medians.'}${tev==='weighted'?' Weighted: each value pulled toward the pooled value with k = '+TK+' pseudo-cycles.':''}`}
       else{radar(rg,AXS,stats,pool,RR,emph);document.getElementById(P.ids.rnote).textContent=`${P.noteKey(mm,wstr)} Top 8 by judged cycles. ${torient==='raw'&&tscale!=='relative'?'Raw magnitudes: outward is more on every axis, so a turns vertex near the rim is worse. Score still reads better = 100.':tscale==='relative'?(torient==='raw'?'Relative-to-pool scale; the middle ring is the pool, and the red spokes are mirrored so outward is more.':'Relative-to-pool scale on every spoke; the middle ring is the pool, outward is better.'):'Each axis is normalised across the ranked groups shown; outward is better.'}${tev==='weighted'?' Weighted: each value pulled toward the pooled value with k = '+TK+' pseudo-cycles.':''}`}
-      const J=shown.reduce((a,g)=>a+g.hjudged,0),U=shown.reduce((a,g)=>a+g.hu,0),Sh=shown.reduce((a,g)=>a+g.hshipped,0),H=shown.reduce((a,g)=>a+(g.hhrs!==undefined?g.hhrs:g.hrs||0),0);
+      const J=shown.reduce((a,g)=>a+g.hjudged,0),U=shown.reduce((a,g)=>a+g.hu,0),Sh=shown.reduce((a,g)=>a+g.hshipped,0),H=shown.reduce((a,g)=>a+(g.hhrs!==undefined?g.hhrs:g.hrs||0),0),SJ=shown.reduce((a,g)=>a+g.hshipj,0),Pend=shown.reduce((a,g)=>a+g.hpend,0),Imp=shown.reduce((a,g)=>a+g.himposs,0);
       const noun={model:'models',family:'families',provider:'providers'}[grp],what=rmode==='combo'?'planner to builder pairs':rmode==='split'?noun+' by phase':noun;
       const hid=rows.length-shown.length,unr=shown.length-ranked.length,kids=CYCW.filter(c=>!SESS[c[CC.sess]][SC.child]).reduce((a,c)=>a+c[CC.kids],0);
-      document.getElementById(P.ids.sum).textContent=P.sumline({shown,what,J,U,Sh,H,hid,unr,kids,tev,TK,mm,sens,wstr});
+      document.getElementById(P.ids.sum).textContent=P.sumline({shown,what,J,U,Sh,H,hid,unr,kids,tev,TK,mm,sens,wstr,SJ,Pend,Imp});
       renderTable();paintSel();renderCmp();if(hot)spot(hot)}
       function tipFor(g){const f=(v,d)=>v===null||v===undefined?'—':v.toFixed(d),p=v=>v===null||v===undefined?'—':v.toFixed(0)+'%';const av=(k,d,suf)=>{const r=g[k],n=g[P.ev[k]];if(tev!=='weighted')return r===null||r===undefined?'—':r.toFixed(d)+(suf||'');const a=g.adj[k];if(r===null||r===undefined||a===null||a===undefined)return '—';return r.toFixed(d)+(suf||'')+' → '+a.toFixed(d)+(suf||'')+` (n=${n})`};const av$=k=>{const r=g[k],n=g[P.ev[k]];if(tev!=='weighted')return r===null?'—':'$'+r.toFixed(2);const a=g.adj[k];if(r===null||r===undefined||a===null||a===undefined)return '—';return '$'+r.toFixed(2)+' → $'+a.toFixed(2)+` (n=${n})`};return P.tip(g,{f,p,av,av$,row,rlab,tier:tierStr})}
       function spot(k){hot=k;svg.querySelectorAll('[data-s]').forEach(e=>{e.classList.toggle('dim',!!k&&e.dataset.s!==k);e.classList.toggle('hot',!!k&&e.dataset.s===k)});document.getElementById(P.ids.strips).querySelectorAll('[data-s]').forEach(e=>{e.classList.toggle('dim',!!k&&e.dataset.s!==k);e.classList.toggle('hot',!!k&&e.dataset.s===k)});rank.querySelectorAll('.row').forEach(r=>r.style.opacity=!k?String(Math.max(0.5,EMPHS[r.dataset.s]??0.28)):(r.dataset.s===k?'1':'.35'));document.querySelectorAll('#'+P.ids.tb+' tr').forEach(tr=>tr.classList.toggle('hot',!!k&&tr.dataset.s===k));leg.querySelectorAll('.lg').forEach(l=>{l.classList.toggle('hot',!!k&&l.dataset.s===k);l.style.opacity=!k?String(Math.max(0.55,EMPHS[l.dataset.s]??0.28)):(l.dataset.s===k?'1':'.55')});paintSel()}
@@ -2598,34 +2603,34 @@
       draw()}
       const TURNS_CFG={uk:'t',ids:{rank:'trank',leg:'rleg',chart:'rchart',strips:'tstrips',stripw:'tstripsw',radarw:'tradarw',sum:'tsum',table:'ttable',tb:'ttb',snote:'snote',rnote:'rnote',group:'tgroup',role:'trole',view:'tview',orient:'torient',ev:'tev',scale:'tscale',metric:'tmetric'},
       metric:{key:'tts',alt:'tpe10'},viewDef:'strips',hideLegendInRadar:false,bandN:3,rules:[5],radarRot:1,
-      fields:['hsess','hu','ha','hjudged','hshipped','hshipped_costed','hu_ship','hedits','hedits_ship','hteerr','hcost','hone'],
+      fields:['hsess','hu','ha','hjudged','hshipped','hshipped_costed','hu_ship','hedits','hedits_ship','hteerr','hcost','hshipj','hshipu','hshipcost','hpend','himposs','hone'],
       newGroup:(k,label,role,fam)=>({k,label,role,fam,turnsBag:[]}),
       extra:(g,r)=>{if(r.turnsShip)g.turnsBag.push(...r.turnsShip)},
-      derive:G=>Object.values(G).filter(g=>g.hjudged>0).map(g=>({...g,tts:g.hshipped?g.hu/g.hshipped:null,ttsMed:medS(g.turnsBag),tpe10:g.hedits_ship>0?g.hu_ship/(g.hedits_ship/10):null,steer:g.hu>0?100*(g.hu-g.hjudged)/g.hu:null,oneshot:g.hshipped?100*g.hone/g.hshipped:null,rph:g.hu>0?g.ha/g.hu:null,shipr:100*g.hshipped/g.hjudged,ept:g.hu>0?g.hedits/g.hu:null,rel:g.hedits>0?100*(1-g.hteerr/g.hedits):null,dps:(g.hcost>0&&g.hshipped_costed)?g.hcost/g.hshipped_costed:null})).sort((a,b)=>b.hjudged-a.hjudged),
+      derive:G=>Object.values(G).filter(g=>g.hjudged>0).map(g=>({...g,tts:g.hshipped?g.hshipu/g.hshipped:null,ttsMed:medS(g.turnsBag),tpe10:g.hedits_ship>0?g.hu_ship/(g.hedits_ship/10):null,steer:g.hu>0?100*(g.hu-g.hjudged)/g.hu:null,oneshot:g.hshipped?100*g.hone/g.hshipped:null,rph:g.hu>0?g.ha/g.hu:null,shipr:g.hshipj?100*g.hshipped/g.hshipj:null,ept:g.hu>0?g.hedits/g.hu:null,rel:g.hedits>0?100*(1-g.hteerr/g.hedits):null,dps:(g.hshipcost>0&&g.hshipped_costed)?g.hshipcost/g.hshipped_costed:null})).sort((a,b)=>b.hjudged-a.hjudged),
       axes:mm=>{const e=mm==='tpe10'?'tpe10':'tts';return [{key:e,label:mm==='tpe10'?'Turns/10 edits':'Turns/ship',hi:0,p:1,kind:'ratio'},{key:'shipr',label:'Ship %',hi:1,p:1,kind:'odds'},{key:'ept',label:'Edits/turn',hi:1,p:1,kind:'ratio'},{key:'rel',label:'Edit OK %',hi:1,kind:'odds'},{key:'rph',label:'Replies/turn',hi:1,kind:'ratio'},{key:'dps',label:'$/ship',hi:0,kind:'ratio'}]},
-      pool:rbase=>{const dv=(a,b)=>b>0?a/b:null,S=k=>rbase.reduce((a,g)=>a+(g[k]||0),0);const cb=rbase.filter(g=>g.hcost>0);const he=S('hedits');return {tts:dv(S('hu'),S('hshipped')),tpe10:dv(S('hu_ship'),S('hedits_ship')/10),shipr:dv(100*S('hshipped'),S('hjudged')),ept:dv(he,S('hu')),rel:he>0?100*(1-S('hteerr')/he):null,rph:dv(S('ha'),S('hu')),dps:dv(cb.reduce((a,g)=>a+g.hcost,0),cb.reduce((a,g)=>a+g.hshipped_costed,0))}},
-      ev:{tts:'hshipped',tpe10:'hshipped',shipr:'hjudged',ept:'hjudged',rel:'hjudged',rph:'hjudged',dps:'hshipped_costed'},
+      pool:rbase=>{const dv=(a,b)=>b>0?a/b:null,S=k=>rbase.reduce((a,g)=>a+(g[k]||0),0);const cb=rbase.filter(g=>g.hshipcost>0);const he=S('hedits');return {tts:dv(S('hshipu'),S('hshipped')),tpe10:dv(S('hu_ship'),S('hedits_ship')/10),shipr:dv(100*S('hshipped'),S('hshipj')),ept:dv(he,S('hu')),rel:he>0?100*(1-S('hteerr')/he):null,rph:dv(S('ha'),S('hu')),dps:dv(cb.reduce((a,g)=>a+g.hshipcost,0),cb.reduce((a,g)=>a+g.hshipped_costed,0))}},
+      ev:{tts:'hshipped',tpe10:'hshipped',shipr:'hshipj',ept:'hjudged',rel:'hjudged',rph:'hjudged',dps:'hshipped_costed'},
       adjKeys:['tts','tpe10','shipr','ept','rel','rph','dps'],
       rankBy:'eng',rankFmt:v=>v.toFixed(1),
       noteKey:mm=>`Primary axes: ${mm==='tpe10'?'turns/10 edits':'turns/ship'} · ship % · edits/turn.`,
-      sumline:c=>`${c.shown.length} ${c.what} · ${c.J.toLocaleString()} judged cycles (${c.U.toLocaleString()} human turns) → ${c.Sh.toLocaleString()} shipped · ranked by ${c.mm==='tpe10'?'turns per 10 shipped edits':'turns per shipped cycle'}, fewest first${c.tev==='weighted'?' (weighted)':''}${c.hid?` · ${c.hid} with under 5 judged cycles hidden`:''}${c.unr?` · ${c.unr} unranked (<10 judged or unshipped)`:''} · ${c.kids.toLocaleString()} subagent sessions folded into parents`,
-      tip:(g,H)=>`<b>${H.rlab(g)}</b>`+H.row('Judged cycles',g.hjudged.toLocaleString())+H.row('Shipped',H.av('shipr',0,'%'))+H.row('Core score',g.score===null?'—':g.score.toFixed(0)+' / 100')+H.row('Turns to ship',H.av('tts',1,''))+H.row('Turns per 10 shipped edits',H.av('tpe10',1,''))+H.row('Edits per turn',H.av('ept',1,''))+H.row('Median turns, shipped',H.f(g.ttsMed,0))+H.row('Steer share',H.p(g.steer))+H.row('One-shot',H.p(g.oneshot))+H.row('Replies per turn',H.av('rph',1,''))+H.row('Edit reliability',H.av('rel',1,'%'))+H.row('$ per ship',H.av$('dps')),
+      sumline:c=>`${c.shown.length} ${c.what} · ${c.J.toLocaleString()} judged cycles (${c.U.toLocaleString()} human turns) → ${c.SJ.toLocaleString()} ship-judged (${c.Pend} pending, ${c.Imp} unshippable) → ${c.Sh.toLocaleString()} shipped · ranked by ${c.mm==='tpe10'?'turns per 10 shipped edits':'turns per shipped cycle'}, fewest first${c.tev==='weighted'?' (weighted)':''}${c.hid?` · ${c.hid} with under 5 judged cycles hidden`:''}${c.unr?` · ${c.unr} unranked (<10 judged or unshipped)`:''} · ${c.kids.toLocaleString()} subagent sessions folded into parents`,
+      tip:(g,H)=>`<b>${H.rlab(g)}</b>`+H.row('Judged cycles',g.hjudged.toLocaleString())+H.row('Ship-judged',g.hshipj.toLocaleString()+` (${g.hpend} pending, ${g.himposs} unshippable)`)+H.row('Shipped',H.av('shipr',0,'%'))+H.row('Core score',g.score===null?'—':g.score.toFixed(0)+' / 100')+H.row('Turns to ship',H.av('tts',1,''))+H.row('Turns per 10 shipped edits',H.av('tpe10',1,''))+H.row('Edits per turn',H.av('ept',1,''))+H.row('Median turns, shipped',H.f(g.ttsMed,0))+H.row('Steer share',H.p(g.steer))+H.row('One-shot',H.p(g.oneshot))+H.row('Replies per turn',H.av('rph',1,''))+H.row('Edit reliability',H.av('rel',1,'%'))+H.row('$ per ship',H.av$('dps')),
       cols:[{cell:g=>g.hjudged,sort:g=>g.hjudged},{cell:(g,V,H)=>H.pct(V(g,'shipr')),sort:(g,V)=>V(g,'shipr')??-1},{cell:(g,V,H)=>H.fmt(V(g,'tts'),1),sort:(g,V)=>V(g,'tts')??-1},{cell:(g,V,H)=>H.fmt(V(g,'tpe10'),1),sort:(g,V)=>V(g,'tpe10')??-1},{cell:(g,V,H)=>H.fmt(V(g,'ept'),1),sort:(g,V)=>V(g,'ept')??-1},{cell:g=>g.score===null?'—':g.score.toFixed(0),sort:g=>g.score??-1},{cell:(g,V,H)=>H.fmt(g.ttsMed,0),sort:g=>g.ttsMed??-1},{cell:(g,V,H)=>H.pct(g.steer),sort:g=>g.steer??-1},{cell:(g,V,H)=>H.pct(g.oneshot),sort:g=>g.oneshot??-1},{cell:(g,V,H)=>H.fmt(V(g,'rph'),1),sort:(g,V)=>V(g,'rph')??-1},{cell:(g,V)=>V(g,'rel')===null?'—':V(g,'rel').toFixed(1)+'%',sort:(g,V)=>V(g,'rel')??-1},{cell:(g,V)=>V(g,'dps')===null?'—':'$'+V(g,'dps').toFixed(2),sort:(g,V)=>V(g,'dps')??-1}]};
       const OVERALL_CFG={uk:'o',ids:{rank:'orank',leg:'oleg',chart:'ochart',strips:'ostrips',stripw:'ostripsw',radarw:'oradarw',sum:'osum',table:'otable',tb:'otb',snote:'osnote',rnote:'ornote',group:'ogroup',role:'orole',view:'oview',orient:'oorient',ev:'oev',scale:'oscale',metric:null,comp:'ocomp'},
       metric:null,viewDef:'radar',hideLegendInRadar:true,bandN:2,rules:[2,5,7,8,9],compare:true,radarGroup:1,
-      fields:['hu','hjudged','hshipped','hshipped_costed','hu_ship','hedits','hedits_ship','hteerr','hcost','hcost_ship','hhrs','hhrs_ship','hver','habort','hone'],
+      fields:['hu','hjudged','hshipped','hshipped_costed','hu_ship','hedits','hedits_ship','hteerr','hcost','hcost_ship','hhrs','hhrs_ship','hver','habort','hshipj','hshipu','hshipcost','hpend','himposs','hone'],
       newGroup:(k,label,role,fam)=>({k,label,role,fam,latBag:[]}),
       extra:(g,r)=>{if(r.latBag)g.latBag.push(...r.latBag)},
-      derive:G=>Object.values(G).filter(g=>g.hjudged>0).map(g=>({...g,shipr:100*g.hshipped/g.hjudged,oneshot:g.hshipped?100*g.hone/g.hshipped:null,ttss:g.hshipped?g.hu_ship/g.hshipped:null,hps:g.hshipped?g.hhrs_ship/g.hshipped:null,dpss:(g.hcost_ship>0&&g.hshipped_costed)?g.hcost_ship/g.hshipped_costed:null,eerrp:g.hedits>0?100*g.hteerr/g.hedits:null,abortp:100*g.habort/g.hjudged,verp:100*g.hver/g.hjudged,ept:g.hu>0?g.hedits/g.hu:null,lat:wmed(g.latBag||[]),ttsAll:g.hshipped?g.hu/g.hshipped:null,dpsAll:(g.hcost>0&&g.hshipped)?g.hcost/g.hshipped:null,yield:g.hedits>0?100*g.hedits_ship/g.hedits:null,noCost:g.hshipped>0&&!(g.hcost_ship>0)})).sort((a,b)=>b.hjudged-a.hjudged),
+      derive:G=>Object.values(G).filter(g=>g.hjudged>0).map(g=>({...g,shipr:g.hshipj?100*g.hshipped/g.hshipj:null,oneshot:g.hshipped?100*g.hone/g.hshipped:null,ttss:g.hshipped?g.hu_ship/g.hshipped:null,hps:g.hshipped?g.hhrs_ship/g.hshipped:null,dpss:(g.hcost_ship>0&&g.hshipped_costed)?g.hcost_ship/g.hshipped_costed:null,eerrp:g.hedits>0?100*g.hteerr/g.hedits:null,abortp:100*g.habort/g.hjudged,verp:100*g.hver/g.hjudged,ept:g.hu>0?g.hedits/g.hu:null,lat:wmed(g.latBag||[]),ttsAll:g.hshipped?g.hshipu/g.hshipped:null,dpsAll:(g.hshipcost>0&&g.hshipped)?g.hshipcost/g.hshipped:null,yield:g.hedits>0?100*g.hedits_ship/g.hedits:null,noCost:g.hshipped>0&&!(g.hcost_ship>0)})).sort((a,b)=>b.hjudged-a.hjudged),
       axes:()=>[{key:'shipr',label:'Ship %',hi:1,p:1,kind:'odds'},{key:'oneshot',label:'One-shot %',hi:1,p:1,kind:'odds'},{key:'ttss',label:'Turns/ship',hi:0,kind:'ratio'},{key:'hps',label:'Hours/ship',hi:0,kind:'ratio'},{key:'dpss',label:'$/ship',hi:0,kind:'ratio'},{key:'eerrp',label:'Tool errors',hi:0,kind:'err'},{key:'abortp',label:'Aborts',hi:0,kind:'err'},{key:'verp',label:'Verified %',hi:1,kind:'odds'},{key:'ept',label:'Edits/turn',hi:1,kind:'ratio'},{key:'lat',label:'Time/step',hi:0,kind:'ratio'}],
       tiers:[{name:'Outcome',w:30,axes:['shipr','oneshot']},{name:'Cost',w:20,axes:['ttss','hps','dpss']},{name:'Precision',w:15,axes:['eerrp','abortp']},{name:'Discipline',w:15,axes:['verp']},{name:'Efficiency',w:10,axes:['ept']},{name:'Latency',w:10,axes:['lat']}],
-      pool:rbase=>{const dv=(a,b)=>b>0?a/b:null,S=k=>rbase.reduce((a,g)=>a+(g[k]||0),0);const cb=rbase.filter(g=>g.hcost_ship>0);return {shipr:dv(100*S('hshipped'),S('hjudged')),oneshot:dv(100*S('hone'),S('hshipped')),ttss:dv(S('hu_ship'),S('hshipped')),hps:dv(S('hhrs_ship'),S('hshipped')),dpss:dv(cb.reduce((a,g)=>a+g.hcost_ship,0),cb.reduce((a,g)=>a+g.hshipped_costed,0)),eerrp:dv(100*S('hteerr'),S('hedits')),abortp:dv(100*S('habort'),S('hjudged')),verp:dv(100*S('hver'),S('hjudged')),ept:dv(S('hedits'),S('hu')),lat:wmed(rbase.flatMap(g=>g.latBag||[]))}},
-      ev:{shipr:'hjudged',oneshot:'hshipped',ttss:'hshipped',hps:'hshipped',dpss:'hshipped_costed',eerrp:'hjudged',abortp:'hjudged',verp:'hjudged',ept:'hjudged',lat:'hjudged'},
+      pool:rbase=>{const dv=(a,b)=>b>0?a/b:null,S=k=>rbase.reduce((a,g)=>a+(g[k]||0),0);const cb=rbase.filter(g=>g.hcost_ship>0);return {shipr:dv(100*S('hshipped'),S('hshipj')),oneshot:dv(100*S('hone'),S('hshipped')),ttss:dv(S('hu_ship'),S('hshipped')),hps:dv(S('hhrs_ship'),S('hshipped')),dpss:dv(cb.reduce((a,g)=>a+g.hcost_ship,0),cb.reduce((a,g)=>a+g.hshipped_costed,0)),eerrp:dv(100*S('hteerr'),S('hedits')),abortp:dv(100*S('habort'),S('hjudged')),verp:dv(100*S('hver'),S('hjudged')),ept:dv(S('hedits'),S('hu')),lat:wmed(rbase.flatMap(g=>g.latBag||[]))}},
+      ev:{shipr:'hshipj',oneshot:'hshipped',ttss:'hshipped',hps:'hshipped',dpss:'hshipped_costed',eerrp:'hjudged',abortp:'hjudged',verp:'hjudged',ept:'hjudged',lat:'hjudged'},
       adjKeys:['shipr','oneshot','ttss','hps','dpss','eerrp','abortp','verp','ept','lat'],
       rankBy:'score',rankFmt:v=>v.toFixed(0),
       noteKey:(mm,w)=>`Ten axes in six tiers, weighted ${w}; 50 is at pool, ×4 is the rim.`,
-      sumline:c=>`${c.shown.length} ${c.what} · ${c.J.toLocaleString()} judged cycles (${c.H.toFixed(0)} h) → ${c.Sh.toLocaleString()} shipped · ranked by overall score (weights ${c.wstr})${c.tev==='weighted'?' (weighted)':''}${c.sens?` · top-3 ${c.sens} to ±10 tier weights`:''}${c.hid?` · ${c.hid} with under 5 judged cycles hidden`:''}${c.unr?` · ${c.unr} unranked`:''} · ${c.kids.toLocaleString()} subagent sessions folded into parents`,
-      tip:(g,H)=>`<b>${H.rlab(g)}</b>`+H.row('Judged cycles',g.hjudged.toLocaleString())+H.row('Hours',g.hhrs.toFixed(1))+H.row('Overall score',g.score===null?'—':g.score.toFixed(0)+' / 100')+H.row('Outcome (30)',H.tier(g,'Outcome'))+H.row('Cost (20)',H.tier(g,'Cost'))+H.row('Precision (15)',H.tier(g,'Precision'))+H.row('Discipline (15)',H.tier(g,'Discipline'))+H.row('Efficiency (10)',H.tier(g,'Efficiency'))+H.row('Latency (10)',H.tier(g,'Latency'))+H.row('Shipped',H.av('shipr',0,'%'))+H.row('One-shot',H.av('oneshot',0,'%'))+H.row('Turns/ship, shipped',H.av('ttss',1,''))+H.row('Hours/ship',H.av('hps',1,''))+H.row('$/ship, shipped',H.av$('dpss')+(g.noCost?' (cost unknown)':(g.hshipped_costed<g.hshipped?` (${g.hshipped_costed} of ${g.hshipped} ships costed)`:'')))+H.row('Tool errors',H.av('eerrp',1,'%'))+H.row('Aborts',H.av('abortp',1,'%'))+H.row('Verified',H.av('verp',0,'%'))+H.row('Edits/turn',H.av('ept',1,''))+H.row('Time/step',H.av('lat',1,''))+H.row('Turns/ship, all-in',H.f(g.ttsAll,1))+H.row('$/ship, all-in',g.dpsAll===null||g.dpsAll===undefined?'—':'$'+g.dpsAll.toFixed(2))+H.row('Edit yield',H.p(g.yield)),
+      sumline:c=>`${c.shown.length} ${c.what} · ${c.J.toLocaleString()} judged cycles (${c.H.toFixed(0)} h) → ${c.SJ.toLocaleString()} ship-judged (${c.Pend} pending, ${c.Imp} unshippable) → ${c.Sh.toLocaleString()} shipped · ranked by overall score (weights ${c.wstr})${c.tev==='weighted'?' (weighted)':''}${c.sens?` · top-3 ${c.sens} to ±10 tier weights`:''}${c.hid?` · ${c.hid} with under 5 judged cycles hidden`:''}${c.unr?` · ${c.unr} unranked`:''} · ${c.kids.toLocaleString()} subagent sessions folded into parents`,
+      tip:(g,H)=>`<b>${H.rlab(g)}</b>`+H.row('Judged cycles',g.hjudged.toLocaleString())+H.row('Ship-judged',g.hshipj.toLocaleString()+` (${g.hpend} pending, ${g.himposs} unshippable)`)+H.row('Hours',g.hhrs.toFixed(1))+H.row('Overall score',g.score===null?'—':g.score.toFixed(0)+' / 100')+H.row('Outcome (30)',H.tier(g,'Outcome'))+H.row('Cost (20)',H.tier(g,'Cost'))+H.row('Precision (15)',H.tier(g,'Precision'))+H.row('Discipline (15)',H.tier(g,'Discipline'))+H.row('Efficiency (10)',H.tier(g,'Efficiency'))+H.row('Latency (10)',H.tier(g,'Latency'))+H.row('Shipped',H.av('shipr',0,'%'))+H.row('One-shot',H.av('oneshot',0,'%'))+H.row('Turns/ship, shipped',H.av('ttss',1,''))+H.row('Hours/ship',H.av('hps',1,''))+H.row('$/ship, shipped',H.av$('dpss')+(g.noCost?' (cost unknown)':(g.hshipped_costed<g.hshipped?` (${g.hshipped_costed} of ${g.hshipped} ships costed)`:'')))+H.row('Tool errors',H.av('eerrp',1,'%'))+H.row('Aborts',H.av('abortp',1,'%'))+H.row('Verified',H.av('verp',0,'%'))+H.row('Edits/turn',H.av('ept',1,''))+H.row('Time/step',H.av('lat',1,''))+H.row('Turns/ship, all-in',H.f(g.ttsAll,1))+H.row('$/ship, all-in',g.dpsAll===null||g.dpsAll===undefined?'—':'$'+g.dpsAll.toFixed(2))+H.row('Edit yield',H.p(g.yield)),
       cols:[{cell:g=>g.hjudged,sort:g=>g.hjudged},{cell:g=>g.hhrs.toFixed(1),sort:g=>g.hhrs},{cell:g=>g.score===null?'—':g.score.toFixed(0),sort:g=>g.score??-1},{cell:(g,V,H)=>H.tier(g,'Outcome'),sort:g=>g.tier?g.tier['Outcome']??-1:-1},{cell:(g,V,H)=>H.tier(g,'Cost'),sort:g=>g.tier?g.tier['Cost']??-1:-1},{cell:(g,V,H)=>H.tier(g,'Precision'),sort:g=>g.tier?g.tier['Precision']??-1:-1},{cell:(g,V,H)=>H.tier(g,'Discipline'),sort:g=>g.tier?g.tier['Discipline']??-1:-1},{cell:(g,V,H)=>H.tier(g,'Efficiency'),sort:g=>g.tier?g.tier['Efficiency']??-1:-1},{cell:(g,V,H)=>H.tier(g,'Latency'),sort:g=>g.tier?g.tier['Latency']??-1:-1},{cell:(g,V,H)=>H.pct(V(g,'shipr')),sort:(g,V)=>V(g,'shipr')??-1},{cell:(g,V,H)=>H.pct(V(g,'oneshot')),sort:(g,V)=>V(g,'oneshot')??-1},{cell:(g,V,H)=>H.fmt(V(g,'ttss'),1),sort:(g,V)=>V(g,'ttss')??-1},{cell:(g,V,H)=>H.fmt(V(g,'hps'),1),sort:(g,V)=>V(g,'hps')??-1},{cell:(g,V)=>V(g,'dpss')===null||V(g,'dpss')===undefined?'—':'$'+V(g,'dpss').toFixed(2),sort:(g,V)=>V(g,'dpss')??-1},{cell:(g,V)=>V(g,'eerrp')===null||V(g,'eerrp')===undefined?'—':V(g,'eerrp').toFixed(1)+'%',sort:(g,V)=>V(g,'eerrp')??-1},{cell:(g,V)=>V(g,'abortp')===null||V(g,'abortp')===undefined?'—':V(g,'abortp').toFixed(1)+'%',sort:(g,V)=>V(g,'abortp')??-1},{cell:(g,V,H)=>H.pct(V(g,'verp')),sort:(g,V)=>V(g,'verp')??-1},{cell:(g,V,H)=>H.fmt(V(g,'ept'),1),sort:(g,V)=>V(g,'ept')??-1},{cell:(g,V,H)=>H.fmt(V(g,'lat'),1),sort:(g,V)=>V(g,'lat')??-1}]};
       profileCard(TURNS_CFG);profileCard(OVERALL_CFG);
       // ---------- shipping in commits ----------

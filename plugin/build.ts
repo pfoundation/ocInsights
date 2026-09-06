@@ -149,12 +149,13 @@ export async function renderDeck(
       c[ccols.tpaths],
   );
   const shipped = judged.filter((c) => c[ccols.tship]);
+  const shipJ = judged.filter((c) => Number(c[ccols.tshipe] ?? 0) === 0);
   kpi.tts = shipped.length
     ? (
-        judged.reduce((a, c) => a + Number(c[ccols.u] ?? 0), 0) / shipped.length
+        shipJ.reduce((a, c) => a + Number(c[ccols.u] ?? 0), 0) / shipped.length
       ).toFixed(1)
     : "—";
-  kpi.tjudged = commas(judged.length);
+  kpi.tshipj = commas(shipJ.length);
   kpi.tshipped = commas(shipped.length);
   for (const [k, v] of Object.entries(kpi)) {
     h = h.replaceAll(`@@${k}@@`, v);

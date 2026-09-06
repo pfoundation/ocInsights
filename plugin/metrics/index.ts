@@ -250,7 +250,12 @@ function run(db: Database): Record<string, unknown> {
   ).length;
   const editing = [...S.values()].filter((s) => s.edits > 0).length;
 
-  const [CM, shipped] = attributeCommits(S, meta, start_day, edits_cyc);
+  const [CM, shipped, repoInfo] = attributeCommits(
+    S,
+    meta,
+    start_day,
+    edits_cyc,
+  );
 
   const AGG = new Map<string, Record<string, number>>();
   const ship_lag = new Map<string, number[]>();
@@ -498,6 +503,49 @@ function run(db: Database): Record<string, unknown> {
     });
   }
 
+  // Ship-judged exclusion per cycle tree (0 ship-judged, 1 pending,
+  // 2 unshippable). A shipped tree is always ship-judged: its outcome was
+  // observed. An unshipped tree is pending while its SHIP_DAYS window is still
+  // open past the latest scanned commit, and unshippable when the window
+  // closed on a worktree outside the scanned repos or with no attributable
+  // commit in it. Excluded trees stay in every process axis; only the ship
+  // rate and the per-ship costs divide by ship-judged cycles.
+  const WIN_S = SHIP_DAYS * 86400;
+  const hasCommitIn = (ts: number[], lo: number, hi: number): boolean => {
+    const i = bisectRight(ts, hi) - 1;
+    return i >= 0 && ts[i]! >= lo;
+  };
+  const shipExcl = (
+    first: number | null,
+    wt: string,
+    tsh: number,
+  ): 0 | 1 | 2 => {
+    if (tsh || !first) return 0;
+    if (first + WIN_S > CM.latest) return 1;
+    const ts = repoInfo.commits.get(wt);
+    if (!ts) return 2;
+    return hasCommitIn(ts, first, first + WIN_S) ? 0 : 2;
+  };
+  const per_cyc_shipe = new Map<string, 0 | 1 | 2>();
+  for (const [sid, s] of S) {
+    if (!s.cyc.length) continue;
+    const wt = meta.get(sid)!.wt;
+    s.cyc.forEach((cy, ci) => {
+      const tsh = cyc_tree.get(unitKey(sid, ci))![4];
+      per_cyc_shipe.set(
+        unitKey(sid, ci),
+        shipExcl(cy.first || s.first || 0, wt, tsh),
+      );
+    });
+  }
+  const per_sess_shipe = new Map<string, 0 | 1 | 2>();
+  for (const [sid, m] of meta) {
+    per_sess_shipe.set(
+      sid,
+      shipExcl(S.get(sid)?.first ?? null, m.wt, tree.get(sid)![4]),
+    );
+  }
+
   const IDX = {
     wt: [] as string[],
     agent: [] as string[],
@@ -597,6 +645,7 @@ function run(db: Database): Record<string, unknown> {
       tvr,
       tbr,
       slat === null ? -1 : pyRound(slat / 1000, 2),
+      per_sess_shipe.get(sid)!,
     ]);
     // Opaque per-session key for contributions (build.ts never injects it into
     // the deck). The raw session id must not leave data.json.
@@ -676,6 +725,7 @@ function run(db: Database): Record<string, unknown> {
     "tver",
     "tabort",
     "latmed",
+    "tshipe",
   ];
   const PH_COLS = [
     "sess",
@@ -738,6 +788,7 @@ function run(db: Database): Record<string, unknown> {
     "bu",
     "ba",
     "bedits",
+    "tshipe",
   ];
   const CYC: unknown[][] = [];
   const sess_idx = new Map<string, number>();
@@ -806,6 +857,7 @@ function run(db: Database): Record<string, unknown> {
         p2 ? p2.u : 0,
         p2 ? p2.a : 0,
         p2 ? p2.edits : 0,
+        per_cyc_shipe.get(unitKey(sid, ci))!,
       ]);
     });
   }
