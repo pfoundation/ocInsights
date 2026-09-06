@@ -97,7 +97,7 @@ Render-time derivation (`derive()` in the template) turns those into the per-car
 
 The deck contains cost figures and project paths — think before pointing a snapshot at a different audience. The live plugin defaults to loopback for the same reason; `0.0.0.0` is opt-in and unauthenticated.
 
-npm package `@pfoundation/ocinsights`. Version is `package.json` `version` (also the contribution `extractor` field). Tag `v*` triggers `.github/workflows/publish.yml` (`bun install`, typecheck, `npm pack --dry-run`, `npm publish --access public` with `NPM_TOKEN`). Locally: `make publish-npm`. The GitHub repo is private, so the workflow does not use `--provenance`. `files` must keep `plugin/`, `index.ts`, `tui.ts` and `template.html` — the live server injects the template.
+npm package `@pfoundation/ocinsights`. The git tag is the source of truth for the version (also the contribution `extractor` field): tag `v*` triggers `.github/workflows/publish.yml`, which strips the leading `v` and overwrites `package.json` `version` via `npm pkg set` after install and before pack/publish (`bun install`, set version from tag, typecheck, `npm pack --dry-run`, `npm publish --access public` with `NPM_TOKEN`). Locally: `make publish-npm` publishes `package.json` verbatim. The GitHub repo is private, so the workflow does not use `--provenance`. `files` must keep `plugin/`, `index.ts`, `tui.ts` and `template.html` — the live server injects the template.
 
 ## Downstream: pragma (Pragmatikos product site) and pragmaServer (ingestion)
 
