@@ -74,6 +74,14 @@ function isActivity(t: string): boolean {
   return ACTIVITY_PREFIXES.some((p) => t === p || t.startsWith(`${p}.`));
 }
 
+// V1 hosts have no ctx.event.subscribe; the v1 `event` hook feeds types here
+// so the quiet-gating works on both APIs.
+export function noteActivity(type: unknown): void {
+  if (typeof type === "string" && isActivity(type)) {
+    shared().lastActive = Date.now();
+  }
+}
+
 export function schedulerOptions():
   Readonly<Record<string, unknown>> | undefined {
   return options;

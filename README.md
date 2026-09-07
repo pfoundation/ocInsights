@@ -30,6 +30,8 @@ In `opencode.json`:
 
 Restart OpenCode, then open `http://127.0.0.1:4173/`.
 
+On opencode 1.x this loads the v1 surface (HTTP deck + edit ledger + auto-contribute); the TUI commands, RPC methods and agent tool need opencode2.
+
 ## Usage
 
 - First request runs the extract (~15 s), then caches it for 5 minutes. `POST /refresh` forces a re-run; `GET /data.json` is the raw payload for scripting; `GET /health` reports status.
@@ -138,7 +140,7 @@ Selection bias: heavy models get hard tasks, cheap models get lookups. Models we
 
 ## Requirements & notes
 
-- OpenCode 1.18+ (v2 plugin API), with `bun` and `git` available.
+- OpenCode with either plugin API: v2 (opencode2, full features) or v1 (1.x, verified on 1.18.21; HTTP deck + ledger + auto-contribute only) — plus `bun` and `git`.
 - The database is opened read-only; nothing here writes to OpenCode.
 - The server listens on loopback by default; `0.0.0.0` is opt-in and unauthenticated.
 - The deck shows cost figures and project paths — think before sharing a snapshot with a different audience.

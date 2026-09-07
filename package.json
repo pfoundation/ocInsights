@@ -3,6 +3,7 @@
   "version": "26.9.0",
   "description": "OpenCode plugin: live insights deck over HTTP, plus the edit ledger",
   "type": "module",
+  "main": "./plugin/index.ts",
   "license": "MIT",
   "author": "P Foundation",
   "repository": {

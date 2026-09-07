@@ -11,6 +11,10 @@
 //
 // `call` is the tool call id. opencode instantiates a plugin once per location, so a hook
 // may fire more than once per edit; extract dedupes on `call`.
+//
+// appendLedgerEdit is the shared writer for both host APIs: the v2 setup path
+// (ctx.tool.hook) and the v1 server path ("tool.execute.after", whose input
+// carries no agent or status — agent is "" there and every call is recorded).
 import type { Plugin } from "@opencode-ai/plugin";
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
@@ -36,30 +40,50 @@ function pathsOf(tool: string, input: unknown): string[] {
   return out;
 }
 
+export type LedgerEdit = {
+  directory: string;
+  sessionID: string;
+  agent: string;
+  callID: string;
+  tool: string;
+  input: unknown;
+};
+
+export async function appendLedgerEdit(e: LedgerEdit): Promise<void> {
+  const files = pathsOf(e.tool, e.input);
+  if (!files.length) return;
+  const ts = Date.now();
+  const lines = files.map((raw) =>
+    JSON.stringify({
+      ts,
+      session: e.sessionID,
+      agent: e.agent,
+      call: e.callID,
+      dir: e.directory,
+      file: isAbsolute(raw) ? raw : resolve(e.directory, raw),
+      tool: e.tool,
+    }),
+  );
+  try {
+    await ensure();
+    await appendFile(LEDGER, lines.join("\n") + "\n");
+  } catch {
+    // Never let bookkeeping break a tool call.
+  }
+}
+
 export async function setupLedger(ctx: Plugin.Context): Promise<() => void> {
   const directory = ctx.location.directory;
   const reg = await ctx.tool.hook("execute.after", async (ev) => {
     if (ev.status !== "completed" || !EDIT_TOOLS.has(ev.tool)) return;
-    const files = pathsOf(ev.tool, ev.input);
-    if (!files.length) return;
-    const ts = Date.now();
-    const lines = files.map((raw) =>
-      JSON.stringify({
-        ts,
-        session: ev.sessionID,
-        agent: ev.agent,
-        call: ev.id,
-        dir: directory,
-        file: isAbsolute(raw) ? raw : resolve(directory, raw),
-        tool: ev.tool,
-      }),
-    );
-    try {
-      await ensure();
-      await appendFile(LEDGER, lines.join("\n") + "\n");
-    } catch {
-      // Never let bookkeeping break a tool call.
-    }
+    await appendLedgerEdit({
+      directory,
+      sessionID: ev.sessionID,
+      agent: ev.agent,
+      callID: ev.id,
+      tool: ev.tool,
+      input: ev.input,
+    });
   });
   return () => {
     void reg.dispose();

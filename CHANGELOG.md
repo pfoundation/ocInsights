@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Dual plugin-API support: the same package now loads on opencode 1.x (v1 API, verified on 1.18.21) via a new `server()` entry alongside the v2 `setup()` — v1 gets the HTTP deck, edit ledger and auto-contribute; RPC, TUI and the agent tool stay v2-only
+- `make smoke` / `smoke-v1`: fix the before/after ledger count on fresh dirs (`grep -c` double-zero broke the comparison)
 - Auto-contribute: first send waits ~15 min after load (was ~3 min), giving new installs time to opt out before any data leaves the machine
 - npm publish workflow triggers on published GitHub Releases (tag push alone no longer publishes); the release tag sets `package.json` version, and pre-releases publish under dist-tag `next` instead of `latest`
 
