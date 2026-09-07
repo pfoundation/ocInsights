@@ -28,7 +28,7 @@ In `opencode.json`:
 { "plugin": ["@pfoundation/ocinsights"] }
 ```
 
-Restart OpenCode, then open `http://127.0.0.1:4173/`.
+Restart OpenCode, then open `http://127.0.0.1:4173/`. The package has no runtime dependencies, so the first install is just this tarball (no minutes-long dependency download).
 
 On opencode 1.x this loads the v1 surface (HTTP deck + edit ledger + auto-contribute); the TUI commands, RPC methods and agent tool need opencode2.
 

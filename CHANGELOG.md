@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Zero runtime dependencies: the SDK's `Rpc.define` / TUI `Plugin.define` are identity functions, now vendored in `plugin/define.ts`, so installs are just this tarball and first boot on opencode 1.x no longer pays for the effect/zod/solid tree (measured: 292 MB → 0.5 MB installed, 17 s → 3 s first-boot block warm-cache); `plugin/shim-check.ts` guards the invariant (SDK parity + bare-import scan, runs on publish)
+
 - Effort labels are `model:effort` (was `model (effort)`); pragma's Model + effort tab ranks planner → builder effort pairs (`pm:pv → bm:bv`) instead of single models
 - Effort/variant reporting: per-message reasoning effort (`default`/`high`/`max`/`xhigh`/`medium`/`thinking`) counted into the dominant model/provider pair, with a *Model + effort* grouping on the productivity, shipping, turns, overall and commits cards
 - Harness reporting: per-session opencode version (`ocv`), a *Harness versions* strip, and a header chip with the newest version

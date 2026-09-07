@@ -1,4 +1,6 @@
-import { Rpc } from "@opencode-ai/plugin/rpc";
+// The RPC contract other plugins/clients import (package `./rpc` export).
+// Dependency-free: defineRpc is the vendored SDK identity (see define.ts).
+import { defineRpc } from "./define.ts";
 
 const healthSchema = {
   type: "object",
@@ -106,7 +108,7 @@ const settingsEventSchema = {
   additionalProperties: false,
 } as const;
 
-export const Insights = Rpc.define({
+export const Insights = defineRpc({
   id: "ocInsights",
   events: {
     contributed: { schema: contributedEventSchema },
