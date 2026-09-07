@@ -182,7 +182,7 @@ make serve            # HTTP server without OpenCode (same port)
 make publish-npm      # typecheck, pack dry-run, npm publish
 ```
 
-Verify needs node with Playwright (it falls back to `~/dev/datastudio/node_modules/playwright` if none is installed here). Publishing to npm needs `npm login` (and `NPM_TOKEN` on the GitHub repo for the tag workflow).
+Verify needs node with Playwright (it falls back to `~/dev/datastudio/node_modules/playwright` if none is installed here). Publishing to npm locally needs `npm login` (with 2FA if the package disallows tokens); the tag workflow authenticates via the npm trusted publisher instead (no secret).
 
 </details>
 
