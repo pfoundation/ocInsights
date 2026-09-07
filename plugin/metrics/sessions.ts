@@ -15,6 +15,7 @@ export type SessionMeta = {
   dele: number;
   has_lines: boolean;
   model: string | null;
+  ocv: string;
   created: number;
   dir: string;
   parent: string | null;
@@ -35,6 +36,7 @@ type SessRow = {
   dels: number;
   has_lines: number;
   model: string | null;
+  ocv: string | null;
   created: number;
   dir: string;
   parent: string | null;
@@ -54,7 +56,8 @@ export function loadSessions(db: Database): Map<string, SessionMeta> {
               COALESCE(s.summary_deletions,0) AS dels,
               s.summary_additions IS NOT NULL AS has_lines,
               s.model AS model, s.time_created AS created,
-              COALESCE(s.directory, p.worktree) AS dir, s.parent_id AS parent
+              COALESCE(s.directory, p.worktree) AS dir, s.parent_id AS parent,
+              s.version AS ocv
        FROM session_v2 s JOIN project p ON p.id=s.project_id
        ORDER BY s.time_created, s.id`,
     )
@@ -73,6 +76,7 @@ export function loadSessions(db: Database): Map<string, SessionMeta> {
       dele: r.dels,
       has_lines: Boolean(r.has_lines),
       model: r.model,
+      ocv: r.ocv ?? "(unknown)",
       created: r.created,
       dir: r.dir,
       parent: r.parent,

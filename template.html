@@ -766,6 +766,12 @@
               id="k_ledger"
               style="display: none; margin-left: 8px"
             ></span
+            ><span
+              class="badge mono"
+              id="k_ocv"
+              title="opencode version of the newest session in view"
+              style="margin-left: 8px"
+            ></span
             ><span class="badge mono" id="k_share"></span
             ><button
               class="btn"
@@ -1141,7 +1147,9 @@
                   ><button class="btn" data-g="family" aria-pressed="true">
                     Family</button
                   ><button class="btn" data-g="provider" aria-pressed="false">
-                    Provider
+                    Provider</button
+                  ><button class="btn" data-g="effort" aria-pressed="false">
+                    Model + effort
                   </button></span
                 ><span style="width: 8px"></span><span class="dim">Role</span
                 ><span class="seg" id="orole"
@@ -1310,7 +1318,9 @@
                   ><button class="btn" data-g="family" aria-pressed="true">
                     Family</button
                   ><button class="btn" data-g="provider" aria-pressed="false">
-                    Provider
+                    Provider</button
+                  ><button class="btn" data-g="effort" aria-pressed="false">
+                    Model + effort
                   </button></span
                 ><span style="width: 8px"></span
                 ><span class="dim">Engagement</span
@@ -1490,7 +1500,9 @@
                   ><button class="btn" data-g="family" aria-pressed="true">
                     Family</button
                   ><button class="btn" data-g="provider" aria-pressed="false">
-                    Provider
+                    Provider</button
+                  ><button class="btn" data-g="effort" aria-pressed="false">
+                    Model + effort
                   </button></span
                 ><span style="width: 8px"></span><span class="dim">Output</span
                 ><span class="seg" id="pmetric"
@@ -1608,7 +1620,10 @@
                   read by design and would make any model used for exploring
                   look unproductive. Sessions are attributed to the model that
                   produced most of their replies; 96% have one model at 80% or
-                  more.
+                  more. The model + effort grouping splits each model by the
+                  reasoning effort it ran at (the variant opencode records per
+                  message, dominant one wins), so a model used at two efforts
+                  ranks as two entries.
                 </p>
                 <p class="dim">
                   Selection bias is real and not removable: heavy models get
@@ -1651,7 +1666,9 @@
                   ><button class="btn" data-g="family" aria-pressed="true">
                     Family</button
                   ><button class="btn" data-g="provider" aria-pressed="false">
-                    Provider
+                    Provider</button
+                  ><button class="btn" data-g="effort" aria-pressed="false">
+                    Model + effort
                   </button></span
                 ><span style="width: 8px"></span><span class="dim">Output</span
                 ><span class="seg" id="sy"
@@ -1858,7 +1875,9 @@
                   ><button class="btn" data-g="family" aria-pressed="true">
                     Family</button
                   ><button class="btn" data-g="provider" aria-pressed="false">
-                    Provider
+                    Provider</button
+                  ><button class="btn" data-g="effort" aria-pressed="false">
+                    Model + effort
                   </button></span
                 ><span style="width: 8px"></span><span class="dim">Effort</span
                 ><span class="seg" id="cx"
@@ -1952,6 +1971,17 @@
               <svg id="pcov" viewBox="0 0 940 110" width="100%"></svg>
               <div class="scale" style="margin-top: 6px">
                 <span id="pcsum"></span>
+              </div>
+              <p class="ctitle" style="margin-top: 18px">Harness versions</p>
+              <p class="cdesc" style="margin-bottom: 8px">
+                Sessions per month by the opencode version that ran them,
+                bucketed to minor releases with beta builds grouped. Model
+                numbers span harness eras; a jump here is the first place to
+                look when a trend breaks.
+              </p>
+              <svg id="hcov" viewBox="0 0 940 110" width="100%"></svg>
+              <div class="scale" style="margin-top: 6px">
+                <span id="hcsum"></span>
               </div>
               <div
                 style="
@@ -2148,8 +2178,9 @@
       const roleVal=v=>FILTER.role==='other'?Math.max(0,v[0]-v[1]-v[2]):v[ROLE_IX[FILTER.role]];
       const roleOK=r=>FILTER.role==='all'||(FILTER.role==='build'&&r===2)||(FILTER.role==='plan'&&r===1)||(FILTER.role==='other'&&r===0);
       const ROLE_LABEL={all:'all sessions',build:'build phases',plan:'plan phases',other:'other agent phases'};
+      const ocvBucket=v=>{if(/^0\.0\.0-beta/i.test(v))return 'beta';const m=v.match(/^(\d+)\.(\d+)/);return m?m[1]+'.'+m[2]:v};
       const monthName=ym=>new Date(Date.parse(ym+'-01')).toLocaleString('en',{month:'long',timeZone:'UTC'});
-      let WSTART,WDAYS,WWEEKS,WLABEL,MONTHS,HM,HMR,HD,PORDER,DHRS,LB,COST,DEPTH,AGENTS,MODELS,RHY,DMODELS,UA,UAM,UAMONTHS,PROD,SHIP,PROD_SPLIT,PROD_COMBO,SESSW,CYCW,KPI,PCOL,COLS,NAMES,PSHORT;
+      let WSTART,WDAYS,WWEEKS,WLABEL,MONTHS,HM,HMR,HD,PORDER,DHRS,LB,COST,DEPTH,AGENTS,MODELS,RHY,DMODELS,UA,UAM,UAMONTHS,PROD,SHIP,PROD_SPLIT,PROD_COMBO,SESSW,CYCW,KPI,PCOL,COLS,NAMES,PSHORT,HVER,OCVLATEST;
       function derive(){
        WSTART=FILTER.win?dayAdd(RANGE.end,-(FILTER.win-1)):RANGE.start;if(WSTART<RANGE.start)WSTART=RANGE.start;
        WDAYS=[];for(let t=Date.parse(WSTART),e=Date.parse(RANGE.end);t<=e;t+=864e5)WDAYS.push(new Date(t).toISOString().slice(0,10));
@@ -2167,14 +2198,14 @@
        let ord=Object.keys(wth).sort((a,b)=>wth[b]-wth[a]);if(FILTER.small)ord=ord.filter(w=>wth[w]>=5);PORDER=ord;
        // a phase row is a session row restricted to one agent role: hours, prompts, tools and cost of that phase; shipped facts ride with the build phase (or the phase that edited)
        const phaseRow=(ph)=>{const s=SESS[ph[PC.sess]];const r=s.slice();const role=ph[PC.role];const share=s[SC.hrs]>0?ph[PC.hrs]/s[SC.hrs]:0;
-        r[SC.role]=role;r[SC.model]=ph[PC.model];r[SC.prov]=ph[PC.prov];['hrs','u','a','err','cost','edits','eerr','files','reads','bash','tools','terr','ver','commit'].forEach(k=>r[SC[k]]=ph[PC[k]]);
+        r[SC.role]=role;r[SC.model]=ph[PC.model];r[SC.prov]=ph[PC.prov];r[SC.variant]=ph[PC.variant];['hrs','u','a','err','cost','edits','eerr','files','reads','bash','tools','terr','ver','commit'].forEach(k=>r[SC[k]]=ph[PC[k]]);
         r[SC.fresh]=Math.round(s[SC.fresh]*share);r[SC.cacheR]=Math.round(s[SC.cacheR]*share);r[SC.cacheW]=Math.round(s[SC.cacheW]*share);r[SC.comp]=role===s[SC.role]?s[SC.comp]:0;
         const owner=(s[SC.bm]>=0&&ph[PC.edits]>0&&role===2)||(s[SC.bm]<0&&ph[PC.edits]>0);if(!owner){r[SC.shipped]=0;r[SC.lag]=-1;r[SC.paths]=0;r[SC.lines]=-1;r[SC.add]=0;r[SC.dele]=0}
         const ownerT=(s[SC.bm]>=0&&role===2)||(s[SC.bm]<0&&role===s[SC.role]);if(!ownerT){r[SC.tship]=0;r[SC.tpaths]=0}return r};
        const phaseRows=roles=>PH.filter(ph=>roles.includes(ph[PC.role])&&inW(SESS[ph[PC.sess]][SC.day])).map(phaseRow);
        SESSW=FILTER.role==='all'?SESS.filter(r=>inW(r[SC.day])):phaseRows([FILTER.role==='build'?2:FILTER.role==='plan'?1:0]);
        CYCW=CYC.filter(c=>inW(SESS[c[CC.sess]][SC.day]));
-       const PM={};PH.forEach(ph=>{(PM[ph[PC.sess]]||(PM[ph[PC.sess]]={}))[ph[PC.role]]=[ph[PC.model],ph[PC.prov]]});
+       const PM={};PH.forEach(ph=>{(PM[ph[PC.sess]]||(PM[ph[PC.sess]]={}))[ph[PC.role]]=[ph[PC.model],ph[PC.prov],ph[PC.variant]]});
        // cycle rows are session rows restricted to one plan→build cycle. cycHRow keeps the parent's keys
        // (off mode groups by session); cycSideRow keeps the parent phase's keys (split groups by phase);
        // cycComboRow takes the cycle's own pair (a combo is a per-cycle fact). Sides own tree facts by
@@ -2182,7 +2213,7 @@
        const cycHRow=c=>{const r=SESS[c[CC.sess]].slice();r[SC.u]=c[CC.u];r[SC.a]=c[CC.a];r[SC.pm]=c[CC.pm];
         r[SC.tedits]=c[CC.tedits];r[SC.teerr]=c[CC.teerr];r[SC.tcost]=c[CC.tcost];r[SC.tship]=c[CC.tship];r[SC.tpaths]=c[CC.tpaths];r[SC.thrs]=c[CC.thrs];r[SC.tver]=c[CC.tver];r[SC.tabort]=c[CC.tabort];r[SC.tshipe]=c[CC.tshipe];r[SC.latmed]=c[CC.latmed];return r};
        const cycSideRow=(c,R)=>{const si=c[CC.sess],pm=(PM[si]||{})[R];if(!pm)return null;const r=SESS[si].slice();
-        r[SC.role]=R;r[SC.model]=pm[0];r[SC.prov]=pm[1];
+        r[SC.role]=R;r[SC.model]=pm[0];r[SC.prov]=pm[1];r[SC.variant]=pm[2];
         r[SC.u]=R===1?c[CC.pu]:R===2?c[CC.bu]:c[CC.u]-c[CC.pu]-c[CC.bu];
         r[SC.a]=R===1?c[CC.pa]:R===2?c[CC.ba]:c[CC.a]-c[CC.pa]-c[CC.ba];
         r[SC.tedits]=c[CC.tedits];r[SC.teerr]=c[CC.teerr];r[SC.tcost]=c[CC.tcost];r[SC.thrs]=c[CC.thrs];r[SC.tver]=c[CC.tver];r[SC.tabort]=c[CC.tabort];r[SC.tshipe]=c[CC.tshipe];
@@ -2194,7 +2225,7 @@
         r[SC.edits]=c[CC.edits];r[SC.eerr]=c[CC.eerr];r[SC.files]=c[CC.files];r[SC.reads]=c[CC.reads];
         r[SC.bash]=0;r[SC.tools]=c[CC.tools];r[SC.terr]=c[CC.terr];r[SC.ver]=c[CC.ver];r[SC.commit]=0;
         r[SC.lines]=c[CC.lines];
-        r[SC.pm]=c[CC.pm];r[SC.pp]=c[CC.pp];r[SC.bm]=c[CC.bm];r[SC.bp]=c[CC.bp];
+        r[SC.pm]=c[CC.pm];r[SC.pp]=c[CC.pp];r[SC.pv]=c[CC.pv];r[SC.bm]=c[CC.bm];r[SC.bp]=c[CC.bp];r[SC.bv]=c[CC.bv];
         r[SC.shipped]=c[CC.shipped];r[SC.lag]=c[CC.lag];r[SC.paths]=c[CC.paths];
         r[SC.kids]=c[CC.kids];r[SC.tedits]=c[CC.tedits];r[SC.teerr]=c[CC.teerr];r[SC.tcost]=c[CC.tcost];r[SC.tship]=c[CC.tship];r[SC.tpaths]=c[CC.tpaths];r[SC.thrs]=c[CC.thrs];r[SC.tver]=c[CC.tver];r[SC.tabort]=c[CC.tabort];r[SC.tshipe]=c[CC.tshipe];r[SC.latmed]=c[CC.latmed];
         return r};
@@ -2214,7 +2245,8 @@
        for(const d of WDAYS){const per=DAYM[d];if(!per)continue;const o={};for(const k in per){const v=roleVal(per[k]);if(v>0){o[k]=v;mdays[k]=(mdays[k]||0)+1}}if(Object.keys(o).length)DMODELS.day[d]=o}
        if(FILTER.small)for(const d in DMODELS.day)for(const k in DMODELS.day[d])if(mdays[k]<5)delete DMODELS.day[d][k];
        UAM={};SESSW.forEach(r=>{const mo=r[SC.day].slice(0,7);const u=UAM[mo]||(UAM[mo]=[0,0,0]);u[r[SC.child]?1:0]+=r[SC.u];u[2]+=r[SC.a]});UAMONTHS=Object.keys(UAM).sort();
-       const M=r=>IDX.model[r[SC.model]],P=r=>IDX.prov[r[SC.prov]];
+       HVER={};OCVLATEST='—';{let bd='';for(const r of SESSW){const mo=r[SC.day].slice(0,7);const v=IDX.ocv[r[SC.ocv]];const b=ocvBucket(v);const e=HVER[mo]||(HVER[mo]={});const o=e[b]||(e[b]={n:0,raw:{}});o.n++;o.raw[v]=(o.raw[v]||0)+1;if(r[SC.day]>=bd){bd=r[SC.day];OCVLATEST=v}}}
+       const M=r=>IDX.model[r[SC.model]],P=r=>IDX.prov[r[SC.prov]],Vv=r=>IDX.variant[r[SC.variant]];
        function aggBy(rows,hrows,keyFn,extraFn){if(typeof hrows==='function'){extraFn=keyFn;keyFn=hrows;hrows=rows}const G={};const mk=r=>({...extraFn(r),sess:0,hrs:0,u:0,a:0,err:0,cost:0,chrs:0,cedits:0,edits:0,eerr:0,files:0,reads:0,bash:0,tools:0,terr:0,vercalls:0,commits:0,coded:0,lsess:0,lhrs:0,lines:0,s_noedit:0,s_edit:0,s_ver:0,s_commit:0,s_paths:0,lags:[],hsess:0,hu:0,ha:0,hjudged:0,hshipped:0,hshipped_costed:0,hu_ship:0,hedits:0,hedits_ship:0,hteerr:0,hcost:0,hcost_ship:0,hhrs:0,hhrs_ship:0,hver:0,habort:0,hshipj:0,hshipu:0,hshipcost:0,hpend:0,himposs:0,hone:0,hu_all:0,turnsShip:[],latBag:[]});
         rows.forEach(r=>{if(!r[SC.a])return;const key=keyFn(r);const g=G[key]||(G[key]=mk(r));
         g.sess++;g.hrs+=r[SC.hrs];g.u+=r[SC.u];g.a+=r[SC.a];g.err+=r[SC.err];g.cost+=r[SC.cost];if(r[SC.cost]>0){g.chrs+=r[SC.hrs];g.cedits+=r[SC.edits]}g.edits+=r[SC.edits];g.eerr+=r[SC.eerr];g.files+=r[SC.files];g.reads+=r[SC.reads];g.bash+=r[SC.bash];g.tools+=r[SC.tools];g.terr+=r[SC.terr];g.vercalls+=r[SC.ver];g.commits+=r[SC.commit];
@@ -2225,11 +2257,11 @@
         let out=Object.values(G).map(g=>{const l=g.lags.sort((a,b)=>a-b);return {...g,ship_lag_med:l.length?l[l.length>>1]:null}});if(FILTER.small)out=out.filter(g=>g.sess>=5);return out}
        const roleF=FILTER.role==='build'?2:FILTER.role==='plan'?1:0;
        const hOff=FILTER.role==='all'?CYCW.map(cycHRow):CYCW.map(c=>cycSideRow(c,roleF)).filter(Boolean);
-       PROD=aggBy(SESSW,hOff,r=>M(r)+'|'+P(r)+'|'+(r[SC.role]===2?1:0),r=>({m:M(r),p:P(r),b:r[SC.role]===2?1:0}));
+       PROD=aggBy(SESSW,hOff,r=>M(r)+'|'+P(r)+'|'+Vv(r)+'|'+(r[SC.role]===2?1:0),r=>({m:M(r),p:P(r),v:Vv(r),b:r[SC.role]===2?1:0}));
        const splitRoles=FILTER.role==='all'?[1,2]:[roleF];
        const hSplit=[];CYCW.forEach(c=>splitRoles.forEach(R=>{const r=cycSideRow(c,R);if(r)hSplit.push(r)}));
-       PROD_SPLIT=aggBy(phaseRows(splitRoles),hSplit,r=>M(r)+'|'+P(r)+'|'+r[SC.role],r=>({m:M(r),p:P(r),b:r[SC.role]===2?1:0,role:r[SC.role]}));
-       PROD_COMBO=aggBy(CYCW.filter(c=>c[CC.pm]>=0&&c[CC.bm]>=0).map(cycComboRow),r=>[r[SC.pm],r[SC.pp],r[SC.bm],r[SC.bp]].join('|'),r=>({pm:IDX.model[r[SC.pm]],pp:IDX.prov[r[SC.pp]],bm:IDX.model[r[SC.bm]],bp:IDX.prov[r[SC.bp]],m:IDX.model[r[SC.bm]],p:IDX.prov[r[SC.bp]],b:1,role:3}));
+       PROD_SPLIT=aggBy(phaseRows(splitRoles),hSplit,r=>M(r)+'|'+P(r)+'|'+Vv(r)+'|'+r[SC.role],r=>({m:M(r),p:P(r),v:Vv(r),b:r[SC.role]===2?1:0,role:r[SC.role]}));
+       PROD_COMBO=aggBy(CYCW.filter(c=>c[CC.pm]>=0&&c[CC.bm]>=0).map(cycComboRow),r=>[r[SC.pm],r[SC.pp],r[SC.pv],r[SC.bm],r[SC.bp],r[SC.bv]].join('|'),r=>({pm:IDX.model[r[SC.pm]],pp:IDX.prov[r[SC.pp]],pv:IDX.variant[r[SC.pv]],bm:IDX.model[r[SC.bm]],bp:IDX.prov[r[SC.bp]],bv:IDX.variant[r[SC.bv]],m:IDX.model[r[SC.bm]],p:IDX.prov[r[SC.bp]],v:IDX.variant[r[SC.bv]],b:1,role:3}));
        SHIP=PROD;
        const totalHr=Object.values(DHRS).reduce((a,b)=>a+b,0);
        const msgs=FILTER.role==='all'?WDAYS.reduce((a,d)=>a+((DAYU[d]||[0,0,0]).reduce((x,y)=>x+y,0)),0):sm('u',SESSW)+sm('a',SESSW);
@@ -2244,6 +2276,7 @@
       const $id=id=>document.getElementById(id);const st=(id,t)=>{const e=$id(id);if(e)e.textContent=t};const sh=(id,x)=>{const e=$id(id);if(e)e.innerHTML=x};
       function renderKPI(){const k=KPI;const scope=(FILTER.role==='all'?'':ROLE_LABEL[FILTER.role]+', ')+WLABEL;
        st('k_badge',`${k.totalHr.toFixed(2)} h · ${k.sessions.toLocaleString()} sess · $${Math.round(k.cost).toLocaleString()} · ${tk(k.fresh)} tok`);
+       st('k_ocv','opencode '+OCVLATEST);
        st('k_range',`${WSTART} to ${RANGE.end}`);st('k_days',`${k.activeDays} active days of ${k.span}`);st('k_total',k.totalHr.toFixed(2)+' h');st('k_msgs',k.msgs.toLocaleString()+' messages');
        st('k_tts',k.tts===null?'—':k.tts.toFixed(1));sh('k_ttssub',`${k.tshipped.toLocaleString()} shipped of ${k.tshipj.toLocaleString()} ship-judged cycles &middot; ${(k.replies/Math.max(k.uTop,1)).toFixed(1)}&times; replies per turn`);
        st('k_fresh',tk(k.fresh));st('k_cache',`${tk(k.cacheR)} cache reads · ${tk(k.cacheW)} cache writes`);
@@ -2255,7 +2288,7 @@
        const active=!!(FILTER.win||FILTER.role!=='all'||FILTER.small);
        st('gchip',active?`Showing ${scope}${FILTER.small?' · small hidden':''}`:'');$id('greset').style.display=active?'inline':'none';
        document.querySelectorAll('#gwin .btn').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.w===FILTER.win)));document.querySelectorAll('#grole .btn').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.r===FILTER.role)));$id('gsmall').setAttribute('aria-pressed',String(FILTER.small))}
-      function resetDom(){['mleg','hleg','dleg','uleg','tcal','am','rhy','sfun','crank','trank','rleg','orank','oleg','tb','ptb','stb','ctb','ttb','otb','mchart','hchart','dchart','pchart','schart','cchart','uchart','pcov','rchart','tstrips','ochart','ostrips','ocomp'].forEach(id=>{const e=$id(id);if(e)e.innerHTML=''});hideTip()}
+      function resetDom(){['mleg','hleg','dleg','uleg','tcal','am','rhy','sfun','crank','trank','rleg','orank','oleg','tb','ptb','stb','ctb','ttb','otb','mchart','hchart','dchart','pchart','schart','cchart','uchart','pcov','hcov','rchart','tstrips','ochart','ostrips','ocomp'].forEach(id=>{const e=$id(id);if(e)e.innerHTML=''});hideTip()}
       document.querySelectorAll('#gwin .btn').forEach(b=>b.onclick=()=>{FILTER.win=+b.dataset.w;renderAll()});
       document.querySelectorAll('#grole .btn').forEach(b=>b.onclick=()=>{FILTER.role=b.dataset.r;renderAll()});
       $id('gsmall').onclick=()=>{FILTER.small=!FILTER.small;renderAll()};
@@ -2295,7 +2328,7 @@
       if(!d.ok){p.innerHTML='<p>Preview failed: '+esc(d.error||'unknown')+'</p>'+closeBtn('Close');arm();return}
       if(sh&&sh.contribute){share=sh.contribute;paintChip()}
       const st=share?(share.enabled?('Insight contribution on · last sent '+(share.lastSent?hm(share.lastSent):'never')):'Insight contribution off ('+share.source+')'):'';
-      p.innerHTML='<p><b>'+d.rows+' cycles</b> ('+(d.changed??'?')+' new) · '+esc(d.dayMin)+' to '+esc(d.dayMax)+' · '+d.models+' models</p>'+(st?'<p class="dim">'+esc(st)+'</p>':'')+'<p class="dim">20 fields per cycle: day, models, turns, edits, cost, shipping. No paths, prompts or session ids. Install '+esc(d.install)+'</p><div class="crow"><button class="btn" id="csend">Send</button>'+(share?'<button class="btn" id="ctoggle">Turn insight contribution '+(share.enabled?'off':'on')+'</button>':'')+'<button class="btn" id="cchip">'+(showChip?'Hide chip':'Show chip')+'</button><button class="btn" id="cclose">Cancel</button></div>';
+      p.innerHTML='<p><b>'+d.rows+' cycles</b> ('+(d.changed??'?')+' new) · '+esc(d.dayMin)+' to '+esc(d.dayMax)+' · '+d.models+' models</p>'+(st?'<p class="dim">'+esc(st)+'</p>':'')+'<p class="dim">25 fields per cycle: day, models, effort, harness, turns, edits, cost, shipping. No paths, prompts or session ids. Install '+esc(d.install)+'</p><div class="crow"><button class="btn" id="csend">Send</button>'+(share?'<button class="btn" id="ctoggle">Turn insight contribution '+(share.enabled?'off':'on')+'</button>':'')+'<button class="btn" id="cchip">'+(showChip?'Hide chip':'Show chip')+'</button><button class="btn" id="cclose">Cancel</button></div>';
       arm();
       const tg=document.getElementById('ctoggle');if(tg)tg.onclick=async()=>{let t;try{const r=await fetch('/contribute-toggle',{method:'POST'});t=await r.json()}catch(e){t={ok:false,error:String((e&&e.message)||e)}}if(typeof t.enabled!=='boolean'){p.innerHTML='<p>'+esc(t.error||'unknown')+'</p>'+closeBtn('Close');arm();return}share=t;paintChip();open()};
       const ch=document.getElementById('cchip');if(ch)ch.onclick=()=>{showChip=!showChip;try{localStorage.setItem('pt-share-chip',showChip?'1':'0')}catch(_){}paintChip();open()};
@@ -2398,7 +2431,7 @@
       r.addEventListener('mouseenter',()=>{hot=m;spot()});r.addEventListener('mouseleave',()=>{hot=null;spot()});svg.appendChild(r);y0+=hh})});
       // month ticks
       let last='';days.forEach((d,i)=>{const mo=d.slice(0,7);if(mo!==last){last=mo;const x=PL+i*bw;const l=document.createElementNS(NS,'line');l.setAttribute('x1',x);l.setAttribute('x2',x);l.setAttribute('y1',PT);l.setAttribute('y2',H-PB);l.setAttribute('stroke','currentColor');l.setAttribute('opacity','.18');l.setAttribute('stroke-dasharray','2 3');svg.appendChild(l);const t=document.createElementNS(NS,'text');t.setAttribute('x',x+3);t.setAttribute('y',H-10);t.setAttribute('font-size','11');t.setAttribute('fill','currentColor');t.setAttribute('opacity','.65');t.textContent=mo.slice(2);svg.appendChild(t)}});
-      const vt=vis.reduce((a,m)=>a+TOT[m],0);const noun={model:'models',family:'families',provider:'providers'}[grp];sum.textContent=`${vis.length} of ${MS.length} ${noun} shown · ${vt.toLocaleString()} messages · ${days.length} days`;spot()}
+      const vt=vis.reduce((a,m)=>a+TOT[m],0);const noun={model:'models',family:'families',provider:'providers',effort:'model + effort'}[grp];sum.textContent=`${vis.length} of ${MS.length} ${noun} shown · ${vt.toLocaleString()} messages · ${days.length} days`;spot()}
       document.querySelectorAll('#dgroup .btn').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.g===grp)));mode.textContent=pct?'Show counts':'Show share';mode.setAttribute('aria-pressed',String(pct));
       document.querySelectorAll('#dgroup .btn').forEach(b=>b.onclick=()=>{grp=UI.d_grp=b.dataset.g;document.querySelectorAll('#dgroup .btn').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));for(const k in hidden)delete hidden[k];hot=null;build();legend();sync();draw()});
       build();legend();draw()})();
@@ -2407,9 +2440,9 @@
       const famOf=m=>{const f=m.match(/^(claude-(?:opus|sonnet|haiku|fable)|grok|gpt|gemini|minimax|deepseek|muse-spark|big-pickle)/);return f?f[1]:m};
       const hueFam={'claude-opus':55,'claude-sonnet':160,'claude-haiku':120,'claude-fable':320,'grok':30,'gpt':240,'gemini':200,'minimax':280,'deepseek':90,'muse-spark':350};
       const hueProv={anthropic:55,xai:30,openai:240,openrouter:280,'github-copilot':200,google:160,meta:350,opencode:120,'opencode-go':90};
-      let grp=UI.p_grp||'family',ym=UI.p_ym||'eph',build=UI.p_build??true,rmode=UI.p_r||'combo',hot=null;const keyOfMP=(m,p)=>grp==='model'?m:grp==='family'?famOf(m):p,famOfMP=(m,p)=>grp==='provider'?p:famOf(m);const rlab=g=>g.label+(g.role===1?' (plan)':g.role===2?' (build)':'');
+      let grp=UI.p_grp||'family',ym=UI.p_ym||'eph',build=UI.p_build??true,rmode=UI.p_r||'combo',hot=null;const keyOfMP=(m,p,v)=>grp==='model'?m:grp==='family'?famOf(m):grp==='provider'?p:m+' ('+v+')',famOfMP=(m,p)=>grp==='provider'?p:famOf(m);const rlab=g=>g.label+(g.role===1?' (plan)':g.role===2?' (build)':'');
       const YL={eph:'Edits per active hour',epp:'Edits per your turn',epd:'Edits per dollar'};
-      function agg(){const G={};const src=rmode==='split'?PROD_SPLIT:rmode==='combo'?PROD_COMBO:PROD;src.forEach(r=>{if(rmode==='off'&&FILTER.role==='all'&&build&&!r.b)return;let k,label,fam,role=0;if(rmode==='combo'){label=keyOfMP(r.pm,r.pp)+' \u2192 '+keyOfMP(r.bm,r.bp);k=label;fam=famOfMP(r.bm,r.bp);role=3}else{label=keyOfMP(r.m,r.p);fam=famOfMP(r.m,r.p);role=rmode==='split'?r.role:0;k=rmode==='split'?label+'|'+role:label}const g=G[k]||(G[k]={k,label,role,sess:0,hrs:0,u:0,a:0,err:0,cost:0,edits:0,reads:0,bash:0,tools:0,terr:0,coded:0,lsess:0,lhrs:0,lines:0,fam});for(const f of ['sess','hrs','u','a','err','cost','chrs','cedits','edits','reads','bash','tools','terr','coded','lsess','lhrs','lines','hu_all'])g[f]=(g[f]||0)+(r[f]||0)});
+      function agg(){const G={};const src=rmode==='split'?PROD_SPLIT:rmode==='combo'?PROD_COMBO:PROD;src.forEach(r=>{if(rmode==='off'&&FILTER.role==='all'&&build&&!r.b)return;let k,label,fam,role=0;if(rmode==='combo'){label=keyOfMP(r.pm,r.pp,r.pv)+' \u2192 '+keyOfMP(r.bm,r.bp,r.bv);k=label;fam=famOfMP(r.bm,r.bp);role=3}else{label=keyOfMP(r.m,r.p,r.v);fam=famOfMP(r.m,r.p);role=rmode==='split'?r.role:0;k=rmode==='split'?label+'|'+role:label}const g=G[k]||(G[k]={k,label,role,sess:0,hrs:0,u:0,a:0,err:0,cost:0,edits:0,reads:0,bash:0,tools:0,terr:0,coded:0,lsess:0,lhrs:0,lines:0,fam});for(const f of ['sess','hrs','u','a','err','cost','chrs','cedits','edits','reads','bash','tools','terr','coded','lsess','lhrs','lines','hu_all'])g[f]=(g[f]||0)+(r[f]||0)});
       return Object.values(G).filter(g=>g.hrs>0).map(g=>({...g,eph:g.edits/g.hrs,epp:g.edits/Math.max(g.hu_all,1),epd:g.cost>0?g.cedits/g.cost:null,dph:(g.cost>0&&g.chrs>0)?g.cost/g.chrs:0,rpe:g.reads/Math.max(g.edits,1),rpp:g.a/Math.max(g.hu_all,1),terrp:100*g.terr/Math.max(g.tools,1),errp:100*g.err/Math.max(g.a,1),lph:g.lhrs>0.5?g.lines/g.lhrs:null})).sort((a,b)=>b.hrs-a.hrs)}
       const seen={};const colorOf=g=>{const f=g.fam;const hue=(grp==='provider'?hueProv[f]:hueFam[f])??0;const k=(seen[f]=(seen[f]||0)+1);const L=0.70-((k-1)%4)*0.10;return `oklch(${L.toFixed(2)} ${hue||f in hueFam||f in hueProv?0.15:0} ${hue})`};
       const med=a=>{const s=a.slice().sort((x,y)=>x-y);return s.length?s[Math.floor(s.length/2)]:0};
@@ -2436,7 +2469,7 @@
       want.sort((a,b)=>b.g.hrs-a.g.hrs).forEach(({g,cx,cy,r})=>{const lab=rlab(g);const w=tw(lab),hh=12;const cands=[[cx+r+6,cy+4,'start'],[cx-r-6,cy+4,'end'],[cx,cy+r+14,'middle'],[cx,cy-r-6,'middle']];
       for(const [x,y,anc] of cands){const x1=anc==='start'?x:anc==='end'?x-w:x-w/2;const box={x1,x2:x1+w,y1:y-hh,y2:y};if(box.x1<PL||box.x2>W-4||box.y1<PT||box.y2>H-PB)continue;if(placed.some(b=>ov(box,b)))continue;
       const t=document.createElementNS(NS,'text');t.setAttribute('class','lbl');t.setAttribute('x',x);t.setAttribute('y',y);t.setAttribute('text-anchor',anc);t.setAttribute('font-size','11');t.setAttribute('fill','currentColor');t.textContent=lab;svg.appendChild(t);placed.push(box);break}});
-      const noun={model:'models',family:'families',provider:'providers'}[grp];const th=rows.reduce((a,g)=>a+g.hrs,0),te=rows.reduce((a,g)=>a+g.edits,0);
+      const noun={model:'models',family:'families',provider:'providers',effort:'model + effort'}[grp];const th=rows.reduce((a,g)=>a+g.hrs,0),te=rows.reduce((a,g)=>a+g.edits,0);
       document.getElementById('psum').textContent=`${shown.length} ${rmode==='combo'?'planner to builder pairs':rmode==='split'?noun+' by phase':noun} plotted · ${te.toLocaleString()} edits over ${th.toFixed(0)} h · ${rows.reduce((a,g)=>a+g.sess,0).toLocaleString()} ${rmode==='combo'?'cycles with both phases':rmode==='split'?'phases':(build&&FILTER.role==='all'?'build sessions':ROLE_LABEL[FILTER.role])}${ym==='epd'?' · zero-cost entries excluded from this view':''}`;
       renderTable();if(hot)spot(hot)}
       function tipFor(g){return `<b>${rlab(g)}</b>`+row('Evidence',g.hrs.toFixed(1)+' h · '+g.sess+(g.role===1?' plan phases':g.role===2?' build phases':g.role===3?' cycles with both phases':' sessions'))+row('Edits',g.edits.toLocaleString())+row('Edits per hour',g.eph.toFixed(1))+row('Edits per your turn',g.epp.toFixed(2))+row('Edits per dollar',(g.epd!==null?g.epd.toFixed(1):'no cost recorded')+(g.cost>0&&g.cedits<g.edits?` (${g.cedits.toLocaleString()} of ${g.edits.toLocaleString()} edits costed)`:''))+row('Cost per hour','$'+g.dph.toFixed(2)+(g.cost>0&&g.chrs<g.hrs?` (${g.chrs.toFixed(0)} of ${g.hrs.toFixed(0)} h costed)`:''))+row('Reads per edit',g.rpe.toFixed(1))+row('Replies per turn',g.rpp.toFixed(1))+row('Tool errors',g.terrp.toFixed(1)+'%')+row('Message errors',g.errp.toFixed(1)+'%')+(g.lph!==null?row('Lines per hour, to Jun 5',g.lph.toFixed(0)):'')+(g.hrs<2?'<div class="dim">Under 2 hours of evidence</div>':'')+(g._off?'<div class="dim">Off scale: axis fits entries with 2 h or more</div>':'')}
@@ -2452,9 +2485,9 @@
       const famOf=m=>{const f=m.match(/^(claude-(?:opus|sonnet|haiku|fable)|grok|gpt|gemini|minimax|deepseek|muse-spark|big-pickle)/);return f?f[1]:m};
       const hueFam={'claude-opus':55,'claude-sonnet':160,'claude-haiku':120,'claude-fable':320,'grok':30,'gpt':240,'gemini':200,'minimax':280,'deepseek':90,'muse-spark':350};
       const hueProv={anthropic:55,xai:30,openai:240,openrouter:280,'github-copilot':200,google:160,meta:350,opencode:120,'opencode-go':90};
-      let grp=UI.s_grp||'family',ym=UI.s_ym||'eph',xm=UI.s_xm||'pph',build=UI.s_build??true,rmode=UI.s_r||'combo',hot=null;const keyOfMP=(m,p)=>grp==='model'?m:grp==='family'?famOf(m):p,famOfMP=(m,p)=>grp==='provider'?p:famOf(m);const rlab=g=>g.label+(g.role===1?' (plan)':g.role===2?' (build)':'');
+      let grp=UI.s_grp||'family',ym=UI.s_ym||'eph',xm=UI.s_xm||'pph',build=UI.s_build??true,rmode=UI.s_r||'combo',hot=null;const keyOfMP=(m,p,v)=>grp==='model'?m:grp==='family'?famOf(m):grp==='provider'?p:m+' ('+v+')',famOfMP=(m,p)=>grp==='provider'?p:famOf(m);const rlab=g=>g.label+(g.role===1?' (plan)':g.role===2?' (build)':'');
       const YL={eph:'Edits per active hour',epp:'Edits per your turn'},XL={pph:'Your turns per active hour',rpe:'Reads per edit',efail:'Edit failures, % of edits'};
-      function agg(){const G={};const src=rmode==='split'?PROD_SPLIT:rmode==='combo'?PROD_COMBO:SHIP;src.forEach(r=>{if(rmode==='off'&&FILTER.role==='all'&&build&&!r.b)return;let k,label,fam,role=0;if(rmode==='combo'){label=keyOfMP(r.pm,r.pp)+' \u2192 '+keyOfMP(r.bm,r.bp);k=label;fam=famOfMP(r.bm,r.bp);role=3}else{label=keyOfMP(r.m,r.p);fam=famOfMP(r.m,r.p);role=rmode==='split'?r.role:0;k=rmode==='split'?label+'|'+role:label}const g=G[k]||(G[k]={k,label,role,fam});for(const f of ['sess','hrs','u','a','err','edits','eerr','files','reads','bash','tools','terr','vercalls','commits','s_noedit','s_edit','s_ver','s_commit','s_paths','hu_all'])g[f]=(g[f]||0)+(r[f]||0);if(r.ship_lag_med!==null&&r.ship_lag_med!==undefined&&r.s_commit)(g.lagbag||(g.lagbag=[])).push([r.ship_lag_med,r.s_commit])});
+      function agg(){const G={};const src=rmode==='split'?PROD_SPLIT:rmode==='combo'?PROD_COMBO:SHIP;src.forEach(r=>{if(rmode==='off'&&FILTER.role==='all'&&build&&!r.b)return;let k,label,fam,role=0;if(rmode==='combo'){label=keyOfMP(r.pm,r.pp,r.pv)+' \u2192 '+keyOfMP(r.bm,r.bp,r.bv);k=label;fam=famOfMP(r.bm,r.bp);role=3}else{label=keyOfMP(r.m,r.p,r.v);fam=famOfMP(r.m,r.p);role=rmode==='split'?r.role:0;k=rmode==='split'?label+'|'+role:label}const g=G[k]||(G[k]={k,label,role,fam});for(const f of ['sess','hrs','u','a','err','edits','eerr','files','reads','bash','tools','terr','vercalls','commits','s_noedit','s_edit','s_ver','s_commit','s_paths','hu_all'])g[f]=(g[f]||0)+(r[f]||0);if(r.ship_lag_med!==null&&r.ship_lag_med!==undefined&&r.s_commit)(g.lagbag||(g.lagbag=[])).push([r.ship_lag_med,r.s_commit])});
       const wmedS=a=>{a.sort((x,y)=>x[0]-y[0]);const t=a.reduce((s,x)=>s+x[1],0);let c=0;for(const [v,w] of a){c+=w;if(c>=t/2)return v}return null};
       return Object.values(G).filter(g=>g.hrs>0).map(g=>({...g,eph:g.edits/g.hrs,epp:g.edits/Math.max(g.hu_all,1),pph:g.hu_all/g.hrs,rpe:g.reads/Math.max(g.edits,1),efail:100*g.eerr/Math.max(g.edits,1),verp:100*(g.s_ver+g.s_commit)/g.sess,comp:g.s_paths?100*g.s_commit/g.s_paths:null,lag:g.lagbag?wmedS(g.lagbag):null,epf:(g.edits>20&&g.files<g.edits/20)?null:g.edits/Math.max(g.files,1),terrp:100*g.terr/Math.max(g.tools,1)})).sort((a,b)=>b.hrs-a.hrs)}
       const seen={};const colorOf=g=>{const f=g.fam;const hue=(grp==='provider'?hueProv[f]:hueFam[f])??0;const k=(seen[f]=(seen[f]||0)+1);const L=0.70-((k-1)%4)*0.10;return `oklch(${L.toFixed(2)} ${(f in hueFam||f in hueProv)?0.15:0} ${hue})`};
@@ -2478,7 +2511,7 @@
       if(g.hrs>=2||shown.length<=8)want.push({g,cx,cy,r})});
       const placed=[];const tw=s=>s.length*6.4+4;const ov=(a,b)=>!(a.x2<b.x1||a.x1>b.x2||a.y2<b.y1||a.y1>b.y2);
       want.sort((a,b)=>b.g.hrs-a.g.hrs).forEach(({g,cx,cy,r})=>{const lab=rlab(g);const w=tw(lab),hh=12;for(const [x,y,anc] of [[cx+r+6,cy+4,'start'],[cx-r-6,cy+4,'end'],[cx,cy+r+14,'middle'],[cx,cy-r-6,'middle']]){const x1=anc==='start'?x:anc==='end'?x-w:x-w/2;const box={x1,x2:x1+w,y1:y-hh,y2:y};if(box.x1<PL||box.x2>W-4||box.y1<PT||box.y2>H-PB)continue;if(placed.some(b=>ov(box,b)))continue;const t=document.createElementNS(NS,'text');t.setAttribute('class','lbl');t.setAttribute('x',x);t.setAttribute('y',y);t.setAttribute('text-anchor',anc);t.setAttribute('font-size','11');t.setAttribute('fill','currentColor');t.textContent=lab;svg.appendChild(t);placed.push(box);break}});
-      const noun={model:'models',family:'families',provider:'providers'}[grp];document.getElementById('ssum').textContent=`${shown.length} ${rmode==='combo'?'planner to builder pairs':rmode==='split'?noun+' by phase':noun} plotted · ${rows.reduce((a,g)=>a+g.edits,0).toLocaleString()} edits · ${rows.reduce((a,g)=>a+g.sess,0).toLocaleString()} ${rmode==='combo'?'cycles with both phases':rmode==='split'?'phases':(build&&FILTER.role==='all'?'build sessions':ROLE_LABEL[FILTER.role])} · medians dashed`;
+      const noun={model:'models',family:'families',provider:'providers',effort:'model + effort'}[grp];document.getElementById('ssum').textContent=`${shown.length} ${rmode==='combo'?'planner to builder pairs':rmode==='split'?noun+' by phase':noun} plotted · ${rows.reduce((a,g)=>a+g.edits,0).toLocaleString()} edits · ${rows.reduce((a,g)=>a+g.sess,0).toLocaleString()} ${rmode==='combo'?'cycles with both phases':rmode==='split'?'phases':(build&&FILTER.role==='all'?'build sessions':ROLE_LABEL[FILTER.role])} · medians dashed`;
       funnel();renderTable();if(hot)spot(hot)}
       function tipFor(g){return `<b>${rlab(g)}</b>`+row('Evidence',g.hrs.toFixed(1)+' h · '+g.sess+(g.role===1?' plan phases':g.role===2?' build phases':g.role===3?' cycles with both phases':' sessions'))+row('Edits per hour',g.eph.toFixed(1))+row('Edits per your turn',g.epp.toFixed(2))+row('Your turns per hour',g.pph.toFixed(1))+row('Reads per edit',g.rpe.toFixed(1))+row('Edit failures',g.efail.toFixed(1)+'%')+row(rmode==='combo'?'Cycles verified':'Sessions verified',g.verp.toFixed(0)+'%')+row(rmode==='combo'?'Cycles shipped':'Sessions shipped',g.comp!==null?g.comp.toFixed(0)+'% of judged':'not judged, no paths recorded')+(g.lag!==null?row('Time to ship, median',g.lag.toFixed(1)+' h'):'')+(g.epf!==null?row('Edits per file',g.epf.toFixed(1)):'')+row('Tool errors',g.terrp.toFixed(1)+'%')+(g.hrs<2?'<div class="dim">Under 2 hours of evidence</div>':'')+(g._off?'<div class="dim">Off scale: axes fit entries with 2 h or more</div>':'')}
       function spot(k){hot=k;svg.querySelectorAll('circle').forEach(c=>c.classList.toggle('dim',!!k&&c.dataset.s!==k));document.querySelectorAll('#stb tr').forEach(tr=>tr.classList.toggle('hot',!!k&&tr.dataset.s===k));document.querySelectorAll('#sfun .row').forEach(r=>r.style.opacity=(!!k&&r.dataset.s!==k)?'.35':'1')}
@@ -2500,9 +2533,9 @@
       const famOf=m=>{const f=m.match(/^(claude-(?:opus|sonnet|haiku|fable)|grok|gpt|gemini|minimax|deepseek|muse-spark|big-pickle)/);return f?f[1]:m};
       const hueFam={'claude-opus':55,'claude-sonnet':160,'claude-haiku':120,'claude-fable':320,'grok':30,'gpt':240,'gemini':200,'minimax':280,'deepseek':90,'muse-spark':350};
       const hueProv={anthropic:55,xai:30,openai:240,openrouter:280,'github-copilot':200,google:160,meta:350,opencode:120,'opencode-go':90};
-      let grp=UI[P.uk+'_grp']||'family',mm=UI[P.uk+'_m']||'tts',rmode=UI[P.uk+'_r']||'combo',hot=null,iso=null,tview=UI[P.uk+'_view']||P.viewDef,torient=UI[P.uk+'_orient']||'raw',tev=UI[P.uk+'_ev']||'weighted',tscale=UI[P.uk+'_scale']||'relative';const TK=10,SPAN=2;const V=(g,k)=>tev==='weighted'&&g.adj?g.adj[k]:g[k];const relOf=(v,pp,ax)=>{if(v===null||v===undefined||pp===null||pp===undefined)return null;const hi=ax.hi,kind=ax.kind||'ratio';if(kind==='ratio'){if(v<=0||pp<=0)return null;return Math.log2(hi?v/pp:pp/v)}if(kind==='odds'){if(pp<=0||pp>=100)return null;if(v===pp)return 0;const o1=v<=0?0:v>=100?Infinity:v/(100-v),o2=pp/(100-pp);if(o1===0)return hi?-Infinity:Infinity;if(o1===Infinity)return hi?Infinity:-Infinity;return Math.log2(hi?o1/o2:o2/o1)}if(kind==='err'){if(pp<=0)return null;if(v===pp)return 0;if(v<=0)return hi?-Infinity:Infinity;return Math.log2(hi?v/pp:pp/v)}return null};const keyOfMP=(m,p)=>grp==='model'?m:grp==='family'?famOf(m):p,famOfMP=(m,p)=>grp==='provider'?p:famOf(m);const rlab=g=>g.label+(g.role===1?' (plan)':g.role===2?' (build)':'');
+      let grp=UI[P.uk+'_grp']||'family',mm=UI[P.uk+'_m']||'tts',rmode=UI[P.uk+'_r']||'combo',hot=null,iso=null,tview=UI[P.uk+'_view']||P.viewDef,torient=UI[P.uk+'_orient']||'raw',tev=UI[P.uk+'_ev']||'weighted',tscale=UI[P.uk+'_scale']||'relative';const TK=10,SPAN=2;const V=(g,k)=>tev==='weighted'&&g.adj?g.adj[k]:g[k];const relOf=(v,pp,ax)=>{if(v===null||v===undefined||pp===null||pp===undefined)return null;const hi=ax.hi,kind=ax.kind||'ratio';if(kind==='ratio'){if(v<=0||pp<=0)return null;return Math.log2(hi?v/pp:pp/v)}if(kind==='odds'){if(pp<=0||pp>=100)return null;if(v===pp)return 0;const o1=v<=0?0:v>=100?Infinity:v/(100-v),o2=pp/(100-pp);if(o1===0)return hi?-Infinity:Infinity;if(o1===Infinity)return hi?Infinity:-Infinity;return Math.log2(hi?o1/o2:o2/o1)}if(kind==='err'){if(pp<=0)return null;if(v===pp)return 0;if(v<=0)return hi?-Infinity:Infinity;return Math.log2(hi?v/pp:pp/v)}return null};const keyOfMP=(m,p,v)=>grp==='model'?m:grp==='family'?famOf(m):grp==='provider'?p:m+' ('+v+')',famOfMP=(m,p)=>grp==='provider'?p:famOf(m);const rlab=g=>g.label+(g.role===1?' (plan)':g.role===2?' (build)':'');
       const ENG=()=>P.metric?(mm===P.metric.alt?P.metric.alt:P.metric.key):null;
-      function agg(){const G={};const src=rmode==='split'?PROD_SPLIT:rmode==='combo'?PROD_COMBO:PROD;src.forEach(r=>{let k,label,fam,role=0;if(rmode==='combo'){label=keyOfMP(r.pm,r.pp)+' \u2192 '+keyOfMP(r.bm,r.bp);k=label;fam=famOfMP(r.bm,r.bp);role=3}else{label=keyOfMP(r.m,r.p);fam=famOfMP(r.m,r.p);role=rmode==='split'?r.role:0;k=rmode==='split'?label+'|'+role:label}const g=G[k]||(G[k]=P.newGroup(k,label,role,fam));for(const f of P.fields)g[f]=(g[f]||0)+(r[f]||0);P.extra(g,r)});return P.derive(G)}
+      function agg(){const G={};const src=rmode==='split'?PROD_SPLIT:rmode==='combo'?PROD_COMBO:PROD;src.forEach(r=>{let k,label,fam,role=0;if(rmode==='combo'){label=keyOfMP(r.pm,r.pp,r.pv)+' \u2192 '+keyOfMP(r.bm,r.bp,r.bv);k=label;fam=famOfMP(r.bm,r.bp);role=3}else{label=keyOfMP(r.m,r.p,r.v);fam=famOfMP(r.m,r.p);role=rmode==='split'?r.role:0;k=rmode==='split'?label+'|'+role:label}const g=G[k]||(G[k]=P.newGroup(k,label,role,fam));for(const f of P.fields)g[f]=(g[f]||0)+(r[f]||0);P.extra(g,r)});return P.derive(G)}
       const seen={};const colorOf=g=>{const f=g.fam;const hue=(grp==='provider'?hueProv[f]:hueFam[f])??0;const k=(seen[f]=(seen[f]||0)+1);const L=0.70-((k-1)%4)*0.10;return `oklch(${L.toFixed(2)} ${(f in hueFam||f in hueProv)?0.15:0} ${hue})`};
       const AX=()=>P.axes(mm);
       function radar(groups,axes,stats,pool,RR,emph){svg.innerHTML='';let daxes=axes;if(P.radarGroup){daxes=[...axes.filter(ax=>ax.hi),...axes.filter(ax=>!ax.hi)];const i=daxes.findIndex(x=>x.key==='lat'),j=daxes.findIndex(x=>x.key==='ttss');if(i>=0&&j>=0)[daxes[i],daxes[j]]=[daxes[j],daxes[i]]}if(P.radarRot)daxes=[...daxes.slice(P.radarRot),...daxes.slice(0,P.radarRot)];const CX=300,CY=245,R=180,N=daxes.length;
@@ -2573,7 +2606,7 @@
       if(sv){strips(ranked,AXS,top8,pool,RR,emph);document.getElementById(P.ids.snote).textContent=`${ranked.length} ranked groups on ${tev==='weighted'?'weighted':'raw'} axes${torient==='better'?', better to the right':', ascending with the better end arrowed'}. Top 8 by judged cycles solid with connector lines, rest hollow. ${tscale==='relative'?'Solid line is the pool; every row spans the same ×4/÷4 range.':'Dashed ticks are medians.'}${tev==='weighted'?' Weighted: each value pulled toward the pooled value with k = '+TK+' pseudo-cycles.':''}`}
       else{radar(rg,AXS,stats,pool,RR,emph);document.getElementById(P.ids.rnote).textContent=`${P.noteKey(mm,wstr)} Top 8 by judged cycles. ${torient==='raw'&&tscale!=='relative'?'Raw magnitudes: outward is more on every axis, so a turns vertex near the rim is worse. Score still reads better = 100.':tscale==='relative'?(torient==='raw'?'Relative-to-pool scale; the middle ring is the pool, and the red spokes are mirrored so outward is more.':'Relative-to-pool scale on every spoke; the middle ring is the pool, outward is better.'):'Each axis is normalised across the ranked groups shown; outward is better.'}${tev==='weighted'?' Weighted: each value pulled toward the pooled value with k = '+TK+' pseudo-cycles.':''}`}
       const J=shown.reduce((a,g)=>a+g.hjudged,0),U=shown.reduce((a,g)=>a+g.hu,0),Sh=shown.reduce((a,g)=>a+g.hshipped,0),H=shown.reduce((a,g)=>a+(g.hhrs!==undefined?g.hhrs:g.hrs||0),0),SJ=shown.reduce((a,g)=>a+g.hshipj,0),Pend=shown.reduce((a,g)=>a+g.hpend,0),Imp=shown.reduce((a,g)=>a+g.himposs,0);
-      const noun={model:'models',family:'families',provider:'providers'}[grp],what=rmode==='combo'?'planner to builder pairs':rmode==='split'?noun+' by phase':noun;
+      const noun={model:'models',family:'families',provider:'providers',effort:'model + effort'}[grp],what=rmode==='combo'?'planner to builder pairs':rmode==='split'?noun+' by phase':noun;
       const hid=rows.length-shown.length,unr=shown.length-ranked.length,kids=CYCW.filter(c=>!SESS[c[CC.sess]][SC.child]).reduce((a,c)=>a+c[CC.kids],0);
       document.getElementById(P.ids.sum).textContent=P.sumline({shown,what,J,U,Sh,H,hid,unr,kids,tev,TK,mm,sens,wstr,SJ,Pend,Imp});
       renderTable();paintSel();renderCmp();if(hot)spot(hot)}
@@ -2639,14 +2672,14 @@
       const hueFam={'claude-opus':55,'claude-sonnet':160,'claude-haiku':120,'claude-fable':320,'grok':30,'gpt':240,'gemini':200,'minimax':280,'deepseek':90,'muse-spark':350};
       const hueProv={anthropic:55,xai:30,openai:240,openrouter:280,'github-copilot':200,google:160,meta:350,opencode:120,'opencode-go':90};
       let grp=UI[P.svg+'g']||'family',xm=UI[P.svg+'x']||'hpc',build=false,rmode=UI[P.svg+'r']||'combo',win=0,min5=false,hot=null;const cut=()=>win?Date.parse(WSTART)/1000:0;const inWin=r=>r[3]>=cut();const manualIn=()=>CM.manual.filter(m=>m[0]>=cut());const totalIn=()=>CM.recs.filter(inWin).length+manualIn().length;const basisIn=()=>{const b={files:0,window:0,advised:0,manual:0};CM.recs.filter(inWin).forEach(r=>b[r[4]||'window']++);manualIn().forEach(m=>b[m[2]?'advised':'manual']++);return b};const XL={hpc:'Active hours per commit',ppc:'Your prompts per commit'};const RN=['other','plan','build'];
-      const keyOf=(mi,pi)=>{const m=CM.models[mi];return grp==='model'?m:grp==='family'?famOf(m):CM.provs[pi]};
+      const keyOf=(mi,pi,evi)=>{const m=CM.models[mi];return grp==='model'?m:grp==='family'?famOf(m):grp==='provider'?CM.provs[pi]:m+' ('+CM.variants[evi]+')'};
       const famKey=(mi,pi)=>grp==='provider'?CM.provs[pi]:famOf(CM.models[mi]);
       const wmed=a=>{a.sort((x,y)=>x[0]-y[0]);const t=a.reduce((s,x)=>s+x[1],0);let c=0;for(const [v,w] of a){c+=w;if(c>=t/2)return v}return a.length?a[a.length-1][0]:0};
       function agg(){const G={};let curBasis='files';const add=(k,fam,role,commits,lines,hrs,prompts,label)=>{const g=G[k]||(G[k]={k,fam,role,label:label||k,commits:0,lines:0,hrs:0,prompts:0,byWin:0,bag:[]});g.commits+=commits;g.lines+=commits*lines;g.hrs+=hrs;g.prompts+=prompts;if(curBasis==='window')g.byWin+=commits;g.bag.push([lines,commits])};
       CM.recs.filter(inWin).forEach(([lines,whrs,ent,at,basis])=>{curBasis=basis||'window';
-       if(rmode==='combo'){const pl={},bd={};let ph=0,bh=0,pp=0,bp=0;ent.forEach(([mi,pi,r,s,u,hh,adv])=>{if(r===1){const k=keyOf(mi,pi);pl[k]=(pl[k]||0)+hh;ph+=hh;pp+=u}else if(r===2&&!adv){const k=keyOf(mi,pi);bd[k]=(bd[k]||0)+s;bh+=hh;bp+=u}});
-        const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1])[0];if(!top(pl)||!top(bd))return;const P=top(pl)[0],B=top(bd)[0];const bi=ent.find(e=>e[2]===2&&keyOf(e[0],e[1])===B);add(P+' \u2192 '+B,famKey(bi[0],bi[1]),3,1,lines,ph+bh,pp+bp,P+' \u2192 '+B)}
-       else ent.forEach(([mi,pi,r,s,u,hh,adv])=>{if(adv)return;if(rmode==='split'){if(r===0)return;const k=keyOf(mi,pi);add(k+'|'+r,famKey(mi,pi),r,s,lines,hh,u,k)}else{if(!roleOK(r))return;add(keyOf(mi,pi),famKey(mi,pi),0,s,lines,hh,u)}})});
+       if(rmode==='combo'){const pl={},bd={};let ph=0,bh=0,pp=0,bp=0;ent.forEach(([mi,pi,r,s,u,hh,adv,evi])=>{if(r===1){const k=keyOf(mi,pi,evi);pl[k]=(pl[k]||0)+hh;ph+=hh;pp+=u}else if(r===2&&!adv){const k=keyOf(mi,pi,evi);bd[k]=(bd[k]||0)+s;bh+=hh;bp+=u}});
+        const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1])[0];if(!top(pl)||!top(bd))return;const P=top(pl)[0],B=top(bd)[0];const bi=ent.find(e=>e[2]===2&&keyOf(e[0],e[1],e[7])===B);add(P+' \u2192 '+B,famKey(bi[0],bi[1]),3,1,lines,ph+bh,pp+bp,P+' \u2192 '+B)}
+       else ent.forEach(([mi,pi,r,s,u,hh,adv,evi])=>{if(adv)return;if(rmode==='split'){if(r===0)return;const k=keyOf(mi,pi,evi);add(k+'|'+r,famKey(mi,pi),r,s,lines,hh,u,k)}else{if(!roleOK(r))return;add(keyOf(mi,pi,evi),famKey(mi,pi),0,s,lines,hh,u)}})});
       const tot=Object.values(G).reduce((a,g)=>a+g.commits,0);
       return Object.values(G).filter(g=>g.commits>0).map(g=>({...g,share:100*g.commits/tot,hpc:g.hrs/g.commits,cp10:10*g.commits/Math.max(g.hrs,0.01),ppc:g.prompts/g.commits,lmed:wmed(g.bag),lmean:g.lines/g.commits,lph:g.hrs>0?g.lines/g.hrs:0})).sort((a,b)=>b.commits-a.commits)}
       const seen={};const colorOf=g=>{const f=g.fam;const hue=(grp==='provider'?hueProv[f]:hueFam[f])??0;const k=(seen[f]=(seen[f]||0)+1);const L=0.70-((k-1)%4)*0.10;return `oklch(${L.toFixed(2)} ${(f in hueFam||f in hueProv)?0.15:0} ${hue})`};
@@ -2671,7 +2704,7 @@
       if(g.commits>=3||shown.length<=8)want.push({g,cx,cy,r})});
       const placed=[];const tw=s=>s.length*6.4+4;const ov=(a,b)=>!(a.x2<b.x1||a.x1>b.x2||a.y2<b.y1||a.y1>b.y2);
       want.sort((a,b)=>b.g.commits-a.g.commits).forEach(({g,cx,cy,r})=>{const lab=g.label+(g.role===1?' (plan)':g.role===2?' (build)':'');const w=tw(lab),hh=12;for(const [x,y,anc] of [[cx+r+6,cy+4,'start'],[cx-r-6,cy+4,'end'],[cx,cy+r+14,'middle'],[cx,cy-r-6,'middle']]){const x1=anc==='start'?x:anc==='end'?x-w:x-w/2;const box={x1,x2:x1+w,y1:y-hh,y2:y};if(box.x1<PL||box.x2>W-4||box.y1<PT||box.y2>H-PB)continue;if(placed.some(b=>ov(box,b)))continue;const t=document.createElementNS(NS,'text');t.setAttribute('class','lbl');t.setAttribute('x',x);t.setAttribute('y',y);t.setAttribute('text-anchor',anc);t.setAttribute('font-size','11');t.setAttribute('fill','currentColor');t.textContent=lab;svg.appendChild(t);placed.push(box);break}});
-      const noun={model:'models',family:'families',provider:'providers'}[grp];const ac=rows.reduce((a,g)=>a+g.commits,0);const hid=rows.length-shown.length;
+      const noun={model:'models',family:'families',provider:'providers',effort:'model + effort'}[grp];const ac=rows.reduce((a,g)=>a+g.commits,0);const hid=rows.length-shown.length;
       document.getElementById(P.sum).textContent=(hid?`${hid} with under 5 commits hidden · `:'')+(rmode==='combo'?`${shown.length} planner to builder pairs · ${ac.toFixed(0)} commits${win?' in the last '+win+' days':''} whose window had both a plan and a build phase · dominant plan phase and dominant credited build phase per window · bubble area is ${SZT()}`:rmode==='split'?`${shown.length} ${noun} by role · ${ac.toFixed(0)} commit shares${win?' in the last '+win+' days':''} from plan and build sessions, other agent types left out · bubble area is ${SZT()} · medians dashed`:(()=>{const b=basisIn();return `${shown.length} ${noun} · ${ac.toFixed(0)} of ${totalIn()} commits${win?' in the last '+win+' days':''} credited to sessions (${(100*ac/Math.max(totalIn(),1)).toFixed(0)}%): ${b.files} by files touched, ${b.window} by time where no paths were recorded · ${b.advised} advised only, no credit · ${b.manual} manual · ${CM.repos} repositories · bubble area is ${SZT()} · medians dashed`})());
       rank();renderTable();if(hot)spot(hot)}
       const roleTxt=g=>g.role===1?' · plan sessions':g.role===2?' · build sessions':g.role===3?' · planner \u2192 builder':'';
@@ -2707,6 +2740,23 @@
       const day=ms=>new Date(ms).toISOString().slice(0,10);const stale=LEDGER.lines>0&&LEDGER.last_edit-LEDGER.last>864e5;const ago=LEDGER.last?Math.max(0,(LEDGER.last_edit-LEDGER.last)/36e5):0;
       const status=!LEDGER.lines?'Edit ledger inactive: the plugin has never written a line. Run make install-plugin and restart opencode.':stale?`Edit ledger stale: last entry ${day(LEDGER.last)}, ${ago.toFixed(0)} h before the newest edit in the database. The plugin is installed but not loading; check the opencode log for "failed to load plugin".`:`Edit ledger live since ${day(LEDGER.first)} · ${LEDGER.lines.toLocaleString()} edit${LEDGER.lines===1?'':'s'} in ${LEDGER.sessions.toLocaleString()} session${LEDGER.sessions===1?'':'s'} · last entry ${day(LEDGER.last)}`;
       $id('pcsum').textContent=status;const chip=$id('k_ledger');chip.style.display=(!LEDGER.lines||stale)?'':'none';chip.textContent=!LEDGER.lines?'Edit ledger inactive':'Edit ledger stale';chip.title=status})();
+      // ---------- harness versions: sessions per month by opencode version bucket ----------
+      (function(){const svg=$id('hcov'),W=940,H=110,PL=40,PR=10,PT=10,PB=24;
+      const months=Object.keys(HVER).filter(m=>m>=WSTART.slice(0,7)).sort();
+      const BK=[];months.forEach(m=>{for(const b in HVER[m])if(!BK.includes(b))BK.push(b)});
+      const COLS=['var(--chart-1)','var(--chart-4)','var(--chart-3)','var(--chart-2)','var(--chart-5)','#6b7280'];
+      const col=b=>COLS[BK.indexOf(b)%COLS.length];
+      const tot=m=>Object.values(HVER[m]).reduce((a,o)=>a+o.n,0);
+      const maxV=Math.max(...months.map(tot),1);
+      for(let g=0;g<=2;g++){const y=H-PB-(H-PT-PB)*g/2;const l=document.createElementNS(NS,'line');l.setAttribute('x1',PL);l.setAttribute('x2',W-PR);l.setAttribute('y1',y);l.setAttribute('y2',y);l.setAttribute('stroke','currentColor');l.setAttribute('opacity','.12');svg.appendChild(l);
+      const t=document.createElementNS(NS,'text');t.setAttribute('x',2);t.setAttribute('y',y+4);t.setAttribute('font-size','11');t.setAttribute('fill','currentColor');t.setAttribute('opacity','.6');t.textContent=Math.round(maxV*g/2);svg.appendChild(t)}
+      const bw=(W-PL-PR)/Math.max(months.length,1);
+      months.forEach((m,i)=>{const X=PL+i*bw+5;let y0=0;const t=tot(m);
+      BK.forEach(b=>{const o=(HVER[m]||{})[b];if(!o)return;const hh=o.n/maxV*(H-PT-PB);if(hh<=0)return;const r=document.createElementNS(NS,'rect');r.setAttribute('x',X);r.setAttribute('y',H-PB-y0-hh);r.setAttribute('width',Math.max(bw-10,1));r.setAttribute('height',hh);r.setAttribute('fill',col(b));r.dataset.hcv=b;
+      bindTip(r,()=>`<b>${m}</b>`+row('Sessions',t.toLocaleString())+'<hr style="border:0;border-top:1px solid var(--border);margin:6px 0">'+BK.filter(bb=>(HVER[m]||{})[bb]).map(bb=>{const oo=HVER[m][bb];const raws=Object.entries(oo.raw).sort((a,b2)=>b2[1]-a[1]).map(([v,n])=>`${v} ×${n}`).join(', ');return row(bb+(bb===b?' &larr;':''),`${oo.n} · ${raws}`,col(bb))}).join(''));svg.appendChild(r);y0+=hh});
+      const t2=document.createElementNS(NS,'text');t2.setAttribute('x',X+(bw-10)/2);t2.setAttribute('y',H-8);t2.setAttribute('font-size','11');t2.setAttribute('text-anchor','middle');t2.setAttribute('fill','currentColor');t2.setAttribute('opacity','.65');t2.textContent=m.slice(2);svg.appendChild(t2)});
+      const raws=new Set();months.forEach(m=>{for(const b in HVER[m])for(const v in HVER[m][b].raw)raws.add(v)});
+      $id('hcsum').textContent=`opencode ${OCVLATEST} latest · ${raws.size} harness versions in ${WLABEL} · hover a bar for the raw versions`})();
       // ---------- who is talking ----------
       (function(){const svg=document.getElementById('uchart'),W=940,H=280,PL=52,PR=52,PB=30,PT=12;const keys=['Your prompts','Subagent prompts','Agent replies'],cols=['var(--chart-1)','var(--chart-3)','#6b7280'];const hidden={};
       const leg=document.getElementById('uleg'),reset=document.getElementById('ureset');

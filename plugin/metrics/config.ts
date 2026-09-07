@@ -30,6 +30,8 @@ export const BUILD_AGENTS = new Set([
   "general",
 ]);
 export const PLAN_AGENTS = new Set(["plan", "Metis (Plan Consultant)"]);
+export const HARNESS = "opencode"; // the agent harness that wrote the DB; a per-row constant until a second harness contributes
+export const VARIANT_NONE = "(none)"; // dominant-variant label when no message in the unit carried one
 export const EDIT_TOOLS = new Set([
   "edit",
   "write",

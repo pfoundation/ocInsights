@@ -79,7 +79,7 @@ async function setup(ctx: Plugin.Context) {
       ed.add({
         name: "insights_contribute",
         description:
-          "Manage anonymous contribution of per-cycle model stats to the global Pragmatikos scorecard: status, enable, disable, or send now. Only 20 numeric/model fields per cycle ever leave the machine.",
+          "Manage anonymous contribution of per-cycle model stats to the global Pragmatikos scorecard: status, enable, disable, or send now. Only 25 numeric/model fields per cycle ever leave the machine.",
         input: {
           type: "object",
           properties: {

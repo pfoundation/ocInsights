@@ -123,18 +123,63 @@ export class Counter<K> {
   }
 }
 
-export function pairKey(model: string, prov: string): string {
-  return model + "\x1f" + prov;
+export function pairKey(model: string, prov: string, variant = ""): string {
+  return model + "\x1f" + prov + "\x1f" + variant;
 }
 
-export function splitPair(k: string): [string, string] {
-  const i = k.indexOf("\x1f");
-  return [k.slice(0, i), k.slice(i + 1)];
+export function splitPair(k: string): [string, string, string] {
+  const [m = "", p = "", v = ""] = k.split("\x1f");
+  return [m, p, v];
 }
 
+// Dominant pair, summed over variants so the pair is identical to the
+// pre-variant count (first-seen wins ties). Destructure the first two.
 export function topPair(mp: Counter<string>): [string, string] | null {
   if (mp.size === 0) return null;
-  return splitPair(mp.mostCommon(1)[0][0]);
+  const tot = new Map<string, number>();
+  for (const [k, n] of mp.entries()) {
+    const [m, p] = splitPair(k);
+    const pk = m + "\x1f" + p;
+    tot.set(pk, (tot.get(pk) ?? 0) + n);
+  }
+  let best = "";
+  let bestN = -1;
+  for (const [pk, n] of tot) {
+    if (n > bestN) {
+      best = pk;
+      bestN = n;
+    }
+  }
+  const i = best.indexOf("\x1f");
+  return [best.slice(0, i), best.slice(i + 1)];
+}
+
+// Most frequent variant within one pair (first-seen wins ties); null when
+// the pair never occurs in the counter.
+export function topVariant(
+  mp: Counter<string>,
+  model: string,
+  prov: string,
+): string | null {
+  let best: string | null = null;
+  let bestN = 0;
+  for (const [k, n] of mp.entries()) {
+    const [m, p, v] = splitPair(k);
+    if (m !== model || p !== prov) continue;
+    if (n > bestN) {
+      best = v;
+      bestN = n;
+    }
+  }
+  return best;
+}
+
+// Display bucket for session_v2.version: "1.18" for releases, "beta" for the
+// 0.0.0-beta-N lineage, raw string for anything else.
+export function versionBucket(v: string): string {
+  if (/^0\.0\.0-beta/i.test(v)) return "beta";
+  const m = v.match(/^(\d+)\.(\d+)/);
+  return m ? `${m[1]}.${m[2]}` : v;
 }
 
 export function unitKey(sid: string, ci: number): string {

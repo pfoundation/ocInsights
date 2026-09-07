@@ -9,6 +9,7 @@ import {
   LINES_CAP,
   LINES_CUTOFF,
   SHIP_DAYS,
+  VARIANT_NONE,
   WINDOW_DAYS,
 } from "./config.ts";
 import { attributeCommits } from "./commits.ts";
@@ -28,6 +29,7 @@ import {
   roleOf,
   sum,
   topPair,
+  topVariant,
   truncMs,
   unitKey,
 } from "./util.ts";
@@ -551,6 +553,8 @@ function run(db: Database): Record<string, unknown> {
     agent: [] as string[],
     model: [] as string[],
     prov: [] as string[],
+    variant: [] as string[],
+    ocv: [] as string[],
     lmodel: [] as string[],
   };
   const ix = {
@@ -558,6 +562,8 @@ function run(db: Database): Record<string, unknown> {
     agent: new Map<string, number>(),
     model: new Map<string, number>(),
     prov: new Map<string, number>(),
+    variant: new Map<string, number>(),
+    ocv: new Map<string, number>(),
     lmodel: new Map<string, number>(),
   };
   const idx = (kind: keyof typeof IDX, v: string): number => {
@@ -578,8 +584,12 @@ function run(db: Database): Record<string, unknown> {
       const ph = s?.ph.get(r);
       if (ph && ph.mp.size) {
         const pm = topPair(ph.mp)!;
-        out.push(idx("model", pm[0]), idx("prov", pm[1]));
-      } else out.push(-1, -1);
+        out.push(
+          idx("model", pm[0]),
+          idx("prov", pm[1]),
+          idx("variant", topVariant(ph.mp, pm[0], pm[1]) ?? VARIANT_NONE),
+        );
+      } else out.push(-1, -1, -1);
     }
     return out;
   };
@@ -587,11 +597,14 @@ function run(db: Database): Record<string, unknown> {
     const s = S.get(sid);
     let model: string;
     let prov: string;
+    let variant: string;
     if (s && s.mp.size) {
       [model, prov] = topPair(s.mp)!;
+      variant = topVariant(s.mp, model, prov) ?? VARIANT_NONE;
     } else {
       model = "(none)";
       prov = "(none)";
+      variant = VARIANT_NONE;
     }
     const day = (s && s.day0) || dayOf(m.created);
     const lines =
@@ -609,6 +622,7 @@ function run(db: Database): Record<string, unknown> {
       m.child ? 1 : 0,
       idx("model", model),
       idx("prov", prov),
+      idx("variant", variant),
       idx("lmodel", modelLabel(m.model)),
       pyRound((s ? s.ms : 0) / 3.6e6, 3),
       s ? s.u : 0,
@@ -646,6 +660,7 @@ function run(db: Database): Record<string, unknown> {
       tbr,
       slat === null ? -1 : pyRound(slat / 1000, 2),
       per_sess_shipe.get(sid)!,
+      idx("ocv", m.ocv),
     ]);
     // Opaque per-session key for contributions (build.ts never injects it into
     // the deck). The raw session id must not leave data.json.
@@ -654,12 +669,16 @@ function run(db: Database): Record<string, unknown> {
       for (const [r, ph] of s.ph) {
         if (!(ph.a || ph.u)) continue;
         const pm = ph.mp.size ? topPair(ph.mp)! : ([model, prov] as const);
+        const pv = ph.mp.size
+          ? (topVariant(ph.mp, pm[0], pm[1]) ?? VARIANT_NONE)
+          : variant;
         const share = ph.ms / Math.max(s.ms, 1);
         PH.push([
           SESS.length - 1,
           r,
           idx("model", pm[0]),
           idx("prov", pm[1]),
+          idx("variant", pv),
           pyRound(ph.ms / 3.6e6, 3),
           ph.u,
           ph.a,
@@ -686,6 +705,7 @@ function run(db: Database): Record<string, unknown> {
     "child",
     "model",
     "prov",
+    "variant",
     "lmodel",
     "hrs",
     "u",
@@ -713,8 +733,10 @@ function run(db: Database): Record<string, unknown> {
     "dele",
     "pm",
     "pp",
+    "pv",
     "bm",
     "bp",
+    "bv",
     "kids",
     "tedits",
     "teerr",
@@ -726,12 +748,14 @@ function run(db: Database): Record<string, unknown> {
     "tabort",
     "latmed",
     "tshipe",
+    "ocv",
   ];
   const PH_COLS = [
     "sess",
     "role",
     "model",
     "prov",
+    "variant",
     "hrs",
     "u",
     "a",
@@ -765,8 +789,10 @@ function run(db: Database): Record<string, unknown> {
     "lines",
     "pm",
     "pp",
+    "pv",
     "bm",
     "bp",
+    "bv",
     "shipped",
     "lag",
     "paths",
@@ -806,8 +832,12 @@ function run(db: Database): Record<string, unknown> {
         const ph = cy.ph.get(r);
         if (ph && ph.mp.size) {
           const dm = topPair(ph.mp)!;
-          pair.push(idx("model", dm[0]), idx("prov", dm[1]));
-        } else pair.push(-1, -1);
+          pair.push(
+            idx("model", dm[0]),
+            idx("prov", dm[1]),
+            idx("variant", topVariant(ph.mp, dm[0], dm[1]) ?? VARIANT_NONE),
+          );
+        } else pair.push(-1, -1, -1);
       }
       const [sh, lag, paths] = per_cyc_ship.get(unitKey(sid, ci))!;
       const [tk, ted, tee, tco, tsh, tpa, thr, tvr, tbr] = cyc_tree.get(

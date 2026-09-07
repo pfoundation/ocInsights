@@ -53,6 +53,24 @@ check("defaults to planner to builder combos", (await page.locator("#prole [data
   && (await page.locator("#psum").innerText()).includes("pairs")
   && (await page.locator("#ctb tr td:first-child").first().innerText()).includes("→"));
 
+// effort/variant grouping: offered on the five model cards, splits rows, keeps judged totals
+check("model + effort grouping offered on five cards", (await count("[data-g=effort]")) === 5);
+check("harness version strip", (await count("#hcov rect")) > 5
+  && (await page.locator("#hcsum").innerText()).includes("harness versions in")
+  && (await page.locator("#k_ocv").innerText()).startsWith("opencode "));
+const famPtb = await count("#ptb tr");
+const osumFam = await page.locator("#osum").innerText();
+await click("#pgroup [data-g=effort]");
+check("effort splits model rows", (await count("#ptb tr")) >= famPtb
+  && (await page.locator("#ptb tr td:first-child").first().innerText()).includes(" ("));
+await click("#ogroup [data-g=effort]");
+const osumEff = await page.locator("#osum").innerText();
+const judgedOf = (s) => s.match(/([\d,]+) judged cycles.*?([\d,]+) ship-judged \((\d+) pending, (\d+) unshippable\) .*→ ([\d,]+) shipped/).slice(1).join("|");
+check("effort keeps judged totals", judgedOf(osumFam) === judgedOf(osumEff), osumEff.slice(0, 140));
+await click("#cgroup [data-g=effort]");
+check("commits effort labels", (await page.locator("#ctb tr td:first-child").first().innerText()).includes(" ("));
+await click("#pgroup [data-g=family]"); await click("#ogroup [data-g=family]"); await click("#cgroup [data-g=family]");
+
 // file-overlap attribution (off view): basis split reported, no-credit rows present, funnel ends in shipped
 await click("#crole [data-r=off]");
 const csum = await page.locator("#csum").innerText();
@@ -82,12 +100,12 @@ const snap = async () => ({
   months: await count("#mchart rect[data-s]"), daily: await count("#hchart rect[data-s]"), models: await count("#dchart rect[data-s]"),
   prod: await count("#pchart circle"), ship: await count("#schart circle"), commits: await count("#cchart circle[data-s]:not([pointer-events])"),
   who: await count("#uchart rect"), tokens: await count("#tcal .cell:visible"), rows: await count("#tb tr"), csum: await page.locator("#csum").innerText(),
-  cov: await count("#pcov rect"),
+  cov: await count("#pcov rect"), hcv: await count("#hcov rect"),
 });
 const all = await snap();
 await click('#gwin [data-w="30"]'); const w30 = await snap();
 check("30-day window changes KPIs", w30.total !== all.total && w30.badge !== all.badge && w30.edits !== all.edits);
-check("30-day window moves every card", w30.months < all.months && w30.daily < all.daily && w30.models < all.models && w30.tokens < all.tokens && w30.commits <= all.commits && w30.cov < all.cov && w30.csum.includes("last 30 days"));
+check("30-day window moves every card", w30.months < all.months && w30.daily < all.daily && w30.models < all.models && w30.tokens < all.tokens && w30.commits <= all.commits && w30.cov < all.cov && w30.hcv < all.hcv && w30.csum.includes("last 30 days"));
 check("filter chip and reset shown", (await page.locator("#gchip").innerText()).includes("last 30 days") && (await page.locator("#greset").isVisible()));
 await click('#gwin [data-w="7"]'); const w7 = await snap();
 check("7-day window changes KPIs", w7.total !== w30.total && w7.badge !== w30.badge);

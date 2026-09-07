@@ -12,9 +12,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CONTRIB_URL, REPO_ROOT, SHARE_DIR } from "./config.ts";
+import { HARNESS } from "./metrics/config.ts";
 import { getData } from "./extract.ts";
 
-export const CONTRIB_SCHEMA = 2;
+export const CONTRIB_SCHEMA = 3;
 
 // Auto-send cadence, shared by the scheduler and the status computation.
 // FIRST_DELAY is the first-install grace window: nothing auto-sends until
@@ -46,6 +47,11 @@ export const CONTRIB_COLS = [
   "tabort",
   "latmed",
   "tshipe",
+  "variant",
+  "pv",
+  "bv",
+  "harness",
+  "hversion",
 ] as const;
 
 export type ContribPayload = {
@@ -321,7 +327,7 @@ export function buildPayload(
 ): ContribPayload {
   const SC = colMap(data.SESS_COLS, "SESS_COLS");
   const CC = colMap(data.CYC_COLS, "CYC_COLS");
-  need(SC, ["day", "role", "child", "model", "prov"], "SESS");
+  need(SC, ["day", "role", "child", "model", "prov", "variant", "ocv"], "SESS");
   need(
     CC,
     [
@@ -341,8 +347,10 @@ export function buildPayload(
       "tshipe",
       "pm",
       "pp",
+      "pv",
       "bm",
       "bp",
+      "bv",
     ],
     "CYC",
   );
@@ -352,7 +360,12 @@ export function buildPayload(
   if (!Array.isArray(KEY) || KEY.length !== SESS.length) {
     throw new Error("contribute: SESS_KEY missing or short; re-extract");
   }
-  const idx = data.IDX as { model: string[]; prov: string[] };
+  const idx = data.IDX as {
+    model: string[];
+    prov: string[];
+    variant: string[];
+    ocv: string[];
+  };
   const meta = data.meta as { generated: string };
   const rows: (string | number)[][] = [];
   for (const c of CYC) {
@@ -364,8 +377,10 @@ export function buildPayload(
       .slice(0, 16);
     const pm = c[CC.pm] as number;
     const pp = c[CC.pp] as number;
+    const pv = c[CC.pv] as number;
     const bm = c[CC.bm] as number;
     const bp = c[CC.bp] as number;
+    const bv = c[CC.bv] as number;
     rows.push([
       key,
       s[SC.day] as string,
@@ -388,6 +403,11 @@ export function buildPayload(
       c[CC.tabort] ? 1 : 0,
       c[CC.latmed] as number,
       c[CC.tshipe] as number,
+      idx.variant[s[SC.variant] as number]!,
+      pv >= 0 ? idx.variant[pv]! : "",
+      bv >= 0 ? idx.variant[bv]! : "",
+      HARNESS,
+      idx.ocv[s[SC.ocv] as number]!,
     ]);
   }
   return {

@@ -7,6 +7,7 @@ import {
   HEARTBEAT_CAP_MS,
   HEARTBEAT_SEED_MS,
   MIGRATION_RE,
+  VARIANT_NONE,
   VERIFY_RE,
 } from "./config.ts";
 import { canon, Counter, dayOf, pairKey, relFile, roleOf } from "./util.ts";
@@ -412,10 +413,14 @@ export function scanMessages(
     } catch {
       continue;
     }
-    const mm = (o.model ?? {}) as { id?: string; providerID?: string };
+    const mm = (o.model ?? {}) as {
+      id?: string;
+      providerID?: string;
+      variant?: string;
+    };
     const model = canon(mm.id ?? "(unlisted)");
     const prov = mm.providerID ?? "(unlisted)";
-    const pk = pairKey(model, prov);
+    const pk = pairKey(model, prov, mm.variant ?? VARIANT_NONE);
     s.mp.add(pk);
     ph.mp.add(pk);
     cy.mp.add(pk);
@@ -477,8 +482,7 @@ export function scanMessages(
         if (cy.last_edit === null || tSec > cy.last_edit) cy.last_edit = tSec;
         const input = (st.input ?? {}) as Record<string, unknown>;
         const f = (st.title || input.filePath || input.path) as
-          | string
-          | undefined;
+          string | undefined;
         let me = month_edits.get(month);
         if (!me) {
           me = [0, 0];

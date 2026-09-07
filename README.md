@@ -65,11 +65,12 @@ Opt out any of: `/contribute` toggle, deck Contribute panel, `OC_INSIGHTS_CONTRI
 <details>
 <summary>Exactly what leaves your machine</summary>
 
-One row per top-level cycle, 21 fields:
+One row per top-level cycle, 26 fields:
 
 ```
 cycle_key day model prov role pm pp bm bp
 u a tedits tpaths teerr tcost tship thrs tver tabort latmed tshipe
+variant pv bv harness hversion
 ```
 
 `cycle_key` is an opaque hash, not a session id. Never sent: session ids, file paths, worktree or project names, prompts, hostnames, usernames, token counts, commit data. Your install is a random UUID in `~/.local/share/ocInsights/contributor.json`, generated on first use.
@@ -97,6 +98,10 @@ These are the judgment calls. They are printed on the relevant cards too, so a r
 **Active hours (heartbeat).** Messages are ordered per session; each message credits `min(gap to previous message, 10 min)` and the first message credits 60 s. Only `user` and `assistant` messages count. This is an estimate of attention, not wall clock: a session left open overnight contributes nothing for the idle span.
 
 **Attribution to a model.** A session belongs to the model that produced most of its assistant messages. 96% of sessions have one model at 80% or more, so this loses little. Model ids are canonicalised first (`claude-opus-4-6`, `claude-opus-4.6`, `anthropic/claude-opus-4.6` and `claude-opus-46` are one model) — that is dedup, not grouping; nothing is ever bucketed as "other".
+
+**Effort (variant).** Every assistant message also records the reasoning effort it ran at (`default`, `high`, `max`, `xhigh`, `medium`, `thinking`), and sessions do switch mid-way, so the effort is counted per message like the model and the dominant one wins each session, phase and cycle. The *model + effort* grouping ranks each model once per effort it ran at — a model used at two efforts is two entries — and keeps the family colours. The dominant model/provider pair is summed over efforts first, so turning efforts on never moves a model between pairs.
+
+**Harness version.** Each session records the opencode version that ran it; the deck buckets releases to minor (`1.18`) and groups `0.0.0-beta-N` builds as `beta`, with the raw strings one hover away. The header chip shows the newest session's version; sessions inherit nothing, cycles inherit their session's.
 
 **Output = file edits.** Every `edit`, `write` or `patch` tool call, parsed from message content. It is the one output signal recorded consistently across every opencode version. Line counts (`summary_additions`) stopped being written after 1.15.13 on 2026-06-05 and appear only as a supplementary column, capped at 10,000 lines per session.
 

@@ -16,8 +16,10 @@ import {
   roleOf,
   splitUnit,
   topPair,
+  topVariant,
   unitKey,
 } from "./util.ts";
+import { VARIANT_NONE } from "./config.ts";
 
 export type GitCommit = {
   h: string;
@@ -98,6 +100,7 @@ type Ed = { ts: number; unit: string; f: string };
 export type CommitData = {
   models: string[];
   provs: string[];
+  variants: string[];
   recs: unknown[];
   manual: unknown[];
   total: number;
@@ -169,8 +172,10 @@ export function attributeCommits(
 
   const models: string[] = [];
   const provs: string[] = [];
+  const variants: string[] = [];
   const mi = new Map<string, number>();
   const pi = new Map<string, number>();
+  const vi = new Map<string, number>();
   const idx = (lst: string[], d: Map<string, number>, v: string) => {
     let i = d.get(v);
     if (i === undefined) {
@@ -273,16 +278,20 @@ export function attributeCommits(
         for (const [role, ph] of phaseList) {
           let model: string;
           let prov: string;
+          let variant: string;
           let frac: number;
           if (ph === null) {
-            const pair = topPair(cy.mp.size ? cy.mp : S.get(sid)!.mp)!;
+            const src = cy.mp.size ? cy.mp : S.get(sid)!.mp;
+            const pair = topPair(src)!;
             model = pair[0];
             prov = pair[1];
+            variant = topVariant(src, model, prov) ?? VARIANT_NONE;
             frac = 1.0;
           } else {
             const pair = topPair(ph.mp)!;
             model = pair[0];
             prov = pair[1];
+            variant = topVariant(ph.mp, model, prov) ?? VARIANT_NONE;
             frac = ph.ms / Math.max(cy.ms, 1);
           }
           ent.push([
@@ -293,6 +302,7 @@ export function attributeCommits(
             pyRound(((cy.u * ms) / Math.max(cy.ms, 1)) * frac, 3),
             pyRound((ms / 3.6e6) * frac, 3),
             0,
+            idx(variants, vi, variant),
           ]);
         }
         if (how === "files") {
@@ -320,6 +330,7 @@ export function attributeCommits(
             pyRound(((cy.u * ms) / Math.max(cy.ms, 1)) * frac, 3),
             pyRound((ms / 3.6e6) * frac, 3),
             1,
+            idx(variants, vi, topVariant(ph.mp, model, prov) ?? VARIANT_NONE),
           ]);
         }
       }
@@ -343,6 +354,7 @@ export function attributeCommits(
     {
       models,
       provs,
+      variants,
       recs,
       manual,
       total,
