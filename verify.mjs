@@ -62,13 +62,13 @@ const famPtb = await count("#ptb tr");
 const osumFam = await page.locator("#osum").innerText();
 await click("#pgroup [data-g=effort]");
 check("effort splits model rows", (await count("#ptb tr")) >= famPtb
-  && (await page.locator("#ptb tr td:first-child").first().innerText()).includes(" ("));
+  && (await page.locator("#ptb tr td:first-child").first().innerText()).includes(":"));
 await click("#ogroup [data-g=effort]");
 const osumEff = await page.locator("#osum").innerText();
 const judgedOf = (s) => s.match(/([\d,]+) judged cycles.*?([\d,]+) ship-judged \((\d+) pending, (\d+) unshippable\) .*→ ([\d,]+) shipped/).slice(1).join("|");
 check("effort keeps judged totals", judgedOf(osumFam) === judgedOf(osumEff), osumEff.slice(0, 140));
 await click("#cgroup [data-g=effort]");
-check("commits effort labels", (await page.locator("#ctb tr td:first-child").first().innerText()).includes(" ("));
+check("commits effort labels", (await page.locator("#ctb tr td:first-child").first().innerText()).includes(":"));
 await click("#pgroup [data-g=family]"); await click("#ogroup [data-g=family]"); await click("#cgroup [data-g=family]");
 
 // file-overlap attribution (off view): basis split reported, no-credit rows present, funnel ends in shipped

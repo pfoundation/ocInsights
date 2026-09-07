@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Effort labels are `model:effort` (was `model (effort)`); pragma's Model + effort tab ranks planner → builder effort pairs (`pm:pv → bm:bv`) instead of single models
 - Effort/variant reporting: per-message reasoning effort (`default`/`high`/`max`/`xhigh`/`medium`/`thinking`) counted into the dominant model/provider pair, with a *Model + effort* grouping on the productivity, shipping, turns, overall and commits cards
 - Harness reporting: per-session opencode version (`ocv`), a *Harness versions* strip, and a header chip with the newest version
 - Contribution contract schema 3: `variant, pv, bv, harness, hversion` appended (26 fields); resend is automatic on upgrade
