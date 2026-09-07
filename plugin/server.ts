@@ -14,6 +14,7 @@ import {
 } from "./contribute.ts";
 import { extractStatus, getData, getDataFile, peekCache } from "./extract.ts";
 import { getStatus, schedulerOptions } from "./scheduler.ts";
+import { log } from "./log.ts";
 import type { ContributeStatus } from "./contribute.ts";
 
 export type Health = {
@@ -202,7 +203,7 @@ function listen(port: number, host: string): Promise<void> {
       owned = true;
       bindError = null;
       const local = `http://${clientHost(host)}:${actualPort}`;
-      console.log(
+      log.info(
         host === "0.0.0.0"
           ? `[oc.insights] listening on ${host}:${actualPort} (${local})`
           : `[oc.insights] listening on ${local}`,
@@ -230,7 +231,7 @@ export async function ensureServer(opts?: {
         bindHost = host;
         owned = false;
         bindError = null;
-        console.log(`[oc.insights] ${host}:${port} already bound, reusing`);
+        log.info(`[oc.insights] ${host}:${port} already bound, reusing`);
         return;
       }
       bindError = err instanceof Error ? err.message : String(err);

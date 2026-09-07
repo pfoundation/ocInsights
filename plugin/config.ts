@@ -3,6 +3,7 @@ import { existsSync, readFileSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { configureLog, log } from "./log.ts";
 
 export const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 export const TEMPLATE = join(REPO_ROOT, "template.html");
@@ -14,12 +15,16 @@ function migrateShareDir(): void {
   try {
     if (existsSync(SHARE_DIR) || !existsSync(OLD_SHARE_DIR)) return;
     renameSync(OLD_SHARE_DIR, SHARE_DIR);
-    console.log(`[oc.insights] migrated ${OLD_SHARE_DIR} -> ${SHARE_DIR}`);
+    log.info(`[oc.insights] migrated ${OLD_SHARE_DIR} -> ${SHARE_DIR}`);
   } catch (err) {
-    console.error("[oc.insights] share dir migrate failed", err);
+    log.error("[oc.insights] share dir migrate failed", err);
   }
 }
 migrateShareDir();
+// Wire the logger after migration: configureLog must not create SHARE_DIR
+// before the migration above checks it (dir creation is lazy on first write,
+// so this ordering plus laziness keeps the rename intact).
+configureLog({ dir: join(SHARE_DIR, "logs") });
 
 export const CACHE_PATH =
   process.env.OC_INSIGHTS_CACHE ?? join(SHARE_DIR, "data.json");

@@ -41,6 +41,7 @@ jobs:
           echo "publishing $(node -p "require('./package.json').version") from $RELEASE_TAG (prerelease: $PRERELEASE) with dist-tag $DIST_TAG"
       - run: bun run typecheck
       - run: bun plugin/shim-check.ts
+      - run: bun plugin/log-check.ts
       - run: npm pack --dry-run
       # auth is OIDC via the trusted publisher configured on npmjs.com (org pfoundation,
       # repo ocInsights, workflow publish.yml); setup-node's registry-url is still needed

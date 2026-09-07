@@ -9,6 +9,7 @@ import {
   EXTRACT_TIMEOUT_MS,
   REPO_ROOT,
 } from "./config.ts";
+import { log } from "./log.ts";
 
 type Cache = {
   data: Record<string, unknown>;
@@ -143,7 +144,7 @@ function runWorker(): Promise<void> {
       gotMessage = true;
       const msg = ev.data;
       if (msg && msg.ok) {
-        if (msg.summary) console.log(`[oc.insights] ${msg.summary}`);
+        if (msg.summary) log.info(`[oc.insights] ${msg.summary}`);
         finish();
         return;
       }
@@ -159,6 +160,9 @@ function runSubprocess(): Promise<void> {
     const child = spawn(bunBin(), [CLI_TS, "extract", "--out", CACHE_PATH], {
       cwd: REPO_ROOT,
       env: process.env,
+      // Explicit stdio: the CLI prints its summary to stdout, which must not
+      // leak into the host terminal. The parent reads the result from disk.
+      stdio: ["ignore", "ignore", "pipe"],
     });
     let stderr = "";
     child.stderr?.on("data", (chunk: Buffer | string) => {
@@ -187,13 +191,13 @@ function runSubprocess(): Promise<void> {
 function runExtract(): Promise<Cache> {
   extracting = true;
   const started = Date.now();
-  console.log("[oc.insights] extract started");
+  log.debug("[oc.insights] extract started");
   return (
     typeof Worker === "undefined"
       ? runSubprocess()
       : runWorker().catch((err: Error & { loadFailure?: boolean }) => {
           if (err.loadFailure) {
-            console.warn(
+            log.warn(
               "[oc.insights] worker failed to load, falling back to bun subprocess",
               err.message,
             );
@@ -205,7 +209,7 @@ function runExtract(): Promise<Cache> {
     .then(() => loadDisk())
     .then((disk) => {
       if (!disk) throw new Error("extract wrote no cache");
-      console.log(`[oc.insights] extract done in ${Date.now() - started}ms`);
+      log.info(`[oc.insights] extract done in ${Date.now() - started}ms`);
       return disk;
     })
     .finally(() => {
@@ -234,7 +238,7 @@ async function getCache(refresh: boolean): Promise<Cache> {
     })
     .catch((err) => {
       lastError = err instanceof Error ? err.message : String(err);
-      console.error("[oc.insights] extract failed", lastError);
+      log.error("[oc.insights] extract failed", lastError);
       if (cache) return cache;
       throw err instanceof Error ? err : new Error(lastError);
     })

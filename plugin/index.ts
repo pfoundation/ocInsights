@@ -42,6 +42,7 @@ import {
   stopScheduler,
 } from "./scheduler.ts";
 import { ensureServer, health } from "./server.ts";
+import { log } from "./log.ts";
 import { EDIT_TOOLS } from "./metrics/config.ts";
 
 async function setup(ctx: Plugin.Context) {
@@ -52,7 +53,7 @@ async function setup(ctx: Plugin.Context) {
   const host = readHost(ctx.options.host, DEFAULT_HOST);
   loadContributor();
   const resolved = resolveContribute(ctx.options);
-  console.log(
+  log.info(
     `[oc.insights] contributions ${resolved.enabled ? "on" : "off"} (source: ${resolved.source})` +
       (resolved.enabled ? ", first check in ~15 min" : ""),
   );
@@ -60,7 +61,7 @@ async function setup(ctx: Plugin.Context) {
   try {
     await ensureServer({ port, host });
   } catch (err) {
-    console.error("[oc.insights] http server failed", err);
+    log.error("[oc.insights] http server failed", err);
   }
   let emit:
     | ((name: ContribEventName, data: Record<string, unknown>) => Promise<void>)
@@ -72,7 +73,7 @@ async function setup(ctx: Plugin.Context) {
     try {
       await emit?.(name, data);
     } catch (err) {
-      console.error("[oc.insights] event emit failed", err);
+      log.warn("[oc.insights] event emit failed", err);
     }
   };
   let toolDispose: (() => void) | undefined;
@@ -142,7 +143,7 @@ async function setup(ctx: Plugin.Context) {
       void toolReg.dispose();
     };
   } catch (err) {
-    console.error("[oc.insights] tool register failed", err);
+    log.error("[oc.insights] tool register failed", err);
   }
   let rpcDispose: (() => void) | undefined;
   try {
@@ -246,7 +247,7 @@ async function setup(ctx: Plugin.Context) {
       void registration.dispose();
     };
   } catch (err) {
-    console.error("[oc.insights] rpc register failed", err);
+    log.error("[oc.insights] rpc register failed", err);
   }
   const stopSchedulerFn = startScheduler({
     emit: (name, data) => safeEmit(name, data),
@@ -298,7 +299,7 @@ async function server(
   const host = readHost(options?.host, DEFAULT_HOST);
   loadContributor();
   const resolved = resolveContribute(options);
-  console.log(
+  log.info(
     `[oc.insights] contributions ${resolved.enabled ? "on" : "off"} (source: ${resolved.source})` +
       (resolved.enabled ? ", first check in ~15 min" : ""),
   );
@@ -309,7 +310,7 @@ async function server(
   try {
     await ensureServer({ port, host });
   } catch (err) {
-    console.error("[oc.insights] http server failed", err);
+    log.error("[oc.insights] http server failed", err);
   }
   // No unload hook on v1; the timer is unref'd so `opencode run` exits on time.
   startScheduler({ emit: async () => {}, options });

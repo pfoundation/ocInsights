@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Plugin diagnostics no longer leak into the OpenCode TUI: all runtime logging goes to `~/.local/share/ocInsights/logs/plugin.log` (JSON lines, 1 MiB rotation, `OC_INSIGHTS_LOG_LEVEL`), never stdout/stderr; `make check-logging` (47 checks) guards import, both setups, scheduler, extract, and failure paths
+
 - Zero runtime dependencies: the SDK's `Rpc.define` / TUI `Plugin.define` are identity functions, now vendored in `plugin/define.ts`, so installs are just this tarball and first boot on opencode 1.x no longer pays for the effect/zod/solid tree (measured: 292 MB → 0.5 MB installed, 17 s → 3 s first-boot block warm-cache); `plugin/shim-check.ts` guards the invariant (SDK parity + bare-import scan, runs on publish)
 
 - Effort labels are `model:effort` (was `model (effort)`); pragma's Model + effort tab ranks planner → builder effort pairs (`pm:pv → bm:bv`) instead of single models

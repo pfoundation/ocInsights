@@ -16,6 +16,7 @@ import {
   runContribute,
   type ContributeStatus,
 } from "./contribute.ts";
+import { log } from "./log.ts";
 import type { ContribEventName } from "./rpc.ts";
 
 const TICK_MS = 60 * 1000;
@@ -111,7 +112,7 @@ async function tick(): Promise<void> {
   if (Date.now() - s.lastActive < QUIET_MS) {
     if (!s.waited) {
       s.waited = true;
-      console.log("[oc.insights] contribution due, waiting for a quiet moment");
+      log.info("[oc.insights] contribution due, waiting for a quiet moment");
     }
     return;
   }
@@ -120,16 +121,16 @@ async function tick(): Promise<void> {
     const res = await runContribute({ dryRun: false, refresh: false });
     if (!res.ok && res.status === 400) {
       s.parked = res.error ?? "http 400";
-      console.error(
+      log.error(
         `[oc.insights] contribute parked until restart: server rejected the payload (${s.parked})`,
       );
     } else if (!res.ok) {
       recordFail();
-      console.error(
+      log.error(
         `[oc.insights] contribute failed (${res.error ?? "unknown"}); retrying later`,
       );
     } else if (res.sent > 0) {
-      console.log(
+      log.info(
         `[oc.insights] contributed ${res.sent} of ${res.rows} cycles` +
           (res.snapshot ? `, snapshot ${res.snapshot}` : ""),
       );
@@ -141,14 +142,14 @@ async function tick(): Promise<void> {
           auto: true,
         });
       } catch (err) {
-        console.error("[oc.insights] contribute event emit failed", err);
+        log.warn("[oc.insights] contribute event emit failed", err);
       }
     } else {
-      console.log("[oc.insights] contribute: no changes, skipping");
+      log.debug("[oc.insights] contribute: no changes, skipping");
     }
   } catch (err) {
     recordFail();
-    console.error(
+    log.error(
       `[oc.insights] contribute failed (${err instanceof Error ? err.message : String(err)}); retrying later`,
     );
   }
@@ -158,6 +159,8 @@ export function startScheduler(opts: {
   emit: Emitter;
   subscribe?: Subscribe;
   options?: Readonly<Record<string, unknown>>;
+  /** Tick interval override (tests); production always uses TICK_MS. */
+  tickMs?: number;
 }): () => void {
   const s = shared();
   if (timer) {
@@ -183,9 +186,12 @@ export function startScheduler(opts: {
       }
     })();
   }
-  timer = setInterval(() => {
-    void tick();
-  }, TICK_MS);
+  timer = setInterval(
+    () => {
+      void tick();
+    },
+    opts.tickMs && opts.tickMs > 0 ? opts.tickMs : TICK_MS,
+  );
   // Never hold a short-lived `opencode2 run` open; dispose clears the timer.
   const t = timer as unknown as { unref?: () => void };
   if (typeof t.unref === "function") t.unref();
