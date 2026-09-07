@@ -4,9 +4,11 @@
 // setup(); v1 hosts (opencode 1.x, object form with server()) call server().
 // Plugin.define is the identity function, so the default export is a plain
 // { id, setup, server } object — each host reads its own half and ignores the
-// other. The v1 path has no runtime imports outside node/bun (Plugin is
-// type-only, rpc.ts loads lazily inside setup), so it resolves under any host.
-// V1 gets HTTP + ledger + scheduler; RPC, TUI and the agent tool are v2-only.
+// other. Zero runtime dependencies anywhere in this package: the only SDK
+// entrypoints ever used (Rpc.define, TUI Plugin.define) are identity
+// functions, vendored in ./define.ts; @opencode-ai/plugin is a devDependency
+// for types only, so user installs are just this tarball. V1 gets HTTP +
+// ledger + scheduler; RPC, TUI and the agent tool are v2-only.
 //
 // Plugins are instantiated once per location; the HTTP server and the contribute
 // scheduler are process-wide singletons.
@@ -170,8 +172,8 @@ async function setup(ctx: Plugin.Context) {
         parked: st.parked,
       };
     };
-    // Lazy: rpc.ts pulls the v2 Rpc builder, which v1 hosts cannot resolve.
-    // setup() only ever runs on v2, so this never loads on v1.
+    // Lazy so a failure here can't take down tool registration or the
+    // scheduler; rpc.ts itself is dependency-free (see define.ts).
     const { Insights } = await import("./rpc.ts");
     const registration = await ctx.rpc.register(Insights, {
       status: async () => rpcHealth(),

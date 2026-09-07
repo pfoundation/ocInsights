@@ -36,6 +36,7 @@ typecheck:                        ## tsc --noEmit over plugin/
 	bunx tsc --noEmit
 publish-npm:                      ## typecheck, pack dry-run, publish @pfoundation/ocinsights
 	bunx tsc --noEmit
+	bun plugin/shim-check.ts
 	npm pack --dry-run
 	npm publish --access public
 contribute:                       ## submit anonymised cycle facts to the global scorecard

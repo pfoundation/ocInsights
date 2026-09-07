@@ -1,5 +1,8 @@
-/** @jsxImportSource @opentui/solid */
-import { Plugin } from "@opencode-ai/plugin/tui";
+// No JSX in this file (dialogs/toasts come from context.ui), so no
+// jsxImportSource pragma and no solid runtime import — the TUI entry is
+// dependency-free like the server entry (see define.ts).
+import type { Plugin } from "@opencode-ai/plugin/tui";
+import { defineTui } from "./define.ts";
 import { Insights } from "./rpc.ts";
 
 type Share = {
@@ -43,9 +46,7 @@ function asContrib(v: unknown): { sent: number; rows: number } {
   };
 }
 
-async function refresh(
-  context: Parameters<Parameters<typeof Plugin.define>[0]["setup"]>[0],
-): Promise<Share> {
+async function refresh(context: Plugin.Context): Promise<Share> {
   try {
     return asShare(await context.client.rpc(Insights).contributeStatus({}));
   } catch {
@@ -53,9 +54,7 @@ async function refresh(
   }
 }
 
-async function openInsights(
-  context: Parameters<Parameters<typeof Plugin.define>[0]["setup"]>[0],
-): Promise<void> {
+async function openInsights(context: Plugin.Context): Promise<void> {
   let url = "http://127.0.0.1:4173/";
   try {
     const raw = asUrl(await context.client.rpc(Insights).status({}));
@@ -87,7 +86,7 @@ async function openInsights(
   context.ui.toast.show({ message: `Insights: ${url}` });
 }
 
-export default Plugin.define({
+export default defineTui({
   id: "oc.insights.tui",
   setup(context) {
     const openDialog = async (): Promise<void> => {
