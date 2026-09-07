@@ -37,6 +37,7 @@ On opencode 1.x this loads the v1 surface (HTTP deck + edit ledger + auto-contri
 - First request runs the extract (~15 s), then caches it for 5 minutes. `POST /refresh` forces a re-run; `GET /data.json` is the raw payload for scripting; `GET /health` reports status.
 - TUI: `/insights` (or `ctrl+alt+i`) opens the deck, `/contribute` manages sharing.
 - Agent tool: `insights_contribute` with `status | enable | disable | send` — "disable contributions" just works.
+- Diagnostics: the plugin never prints into the terminal; logs live in `~/.local/share/ocInsights/logs/plugin.log` (`%USERPROFILE%\.local\share\ocInsights\logs\plugin.log` on Windows), one JSON record per line, rotated at 1 MiB with one backup. Set `OC_INSIGHTS_LOG_LEVEL` to `debug`, `info` (default), `warn`, `error`, or `off`.
 
 ## Configuration
 

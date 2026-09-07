@@ -1,4 +1,4 @@
-.PHONY: all extract build verify publish-npm clean template install-plugin ledger smoke smoke-v1 smoke-http serve typecheck contribute contribute-preview
+.PHONY: all extract build verify publish-npm clean template install-plugin ledger smoke smoke-v1 smoke-http serve typecheck check-logging contribute contribute-preview
 all: extract build verify        ## regenerate the deck from the live database and smoke-test it
 install-plugin:                   ## add this repo to global opencode plugins (restart opencode after)
 	bun install
@@ -34,9 +34,12 @@ template:                         ## re-derive template.html from the reference 
 	bun plugin/cli.ts template legacy/opencode_time_full.reference.html template.html
 typecheck:                        ## tsc --noEmit over plugin/
 	bunx tsc --noEmit
+check-logging:                  ## prove plugin diagnostics never touch the terminal (47 checks)
+	bun plugin/log-check.ts
 publish-npm:                      ## typecheck, pack dry-run, publish @pfoundation/ocinsights
 	bunx tsc --noEmit
 	bun plugin/shim-check.ts
+	bun plugin/log-check.ts
 	npm pack --dry-run
 	npm publish --access public
 contribute:                       ## submit anonymised cycle facts to the global scorecard
