@@ -1,6 +1,6 @@
 {
   "name": "@pfoundation/ocinsights",
-  "version": "26.9.0",
+  "version": "26.9.1",
   "description": "OpenCode plugin: live insights deck over HTTP, plus the edit ledger",
   "type": "module",
   "main": "./plugin/index.ts",

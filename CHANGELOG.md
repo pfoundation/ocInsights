@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 26.9.1
+
 - Shipping attribution follows the git common directory and the worktree that held the file, not OpenCode's stale `project.worktree` label; file-overlap matching is per file so an unrelated commit cannot hide later same-file edits, and same-timestamp commits are scored as a batch (`ATTRIBUTION_REVISION` 2; re-extract before contributing)
 
 - Plugin diagnostics no longer leak into the OpenCode TUI: all runtime logging goes to `~/.local/share/ocInsights/logs/plugin.log` (JSON lines, 1 MiB rotation, `OC_INSIGHTS_LOG_LEVEL`), never stdout/stderr; `make check-logging` (47 checks) guards import, both setups, scheduler, extract, and failure paths
