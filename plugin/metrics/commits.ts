@@ -1,9 +1,12 @@
 import { spawnSync } from "node:child_process";
 import {
+  AUTHOR_LEARN_WINDOW_S,
+  AUTHOR_MIN_HITS,
+  AUTHOR_MIN_SHARE,
   COMMIT_GRACE_S,
   COMMIT_WINDOW_H,
   DEV_ROOT,
-  GIT_AUTHORS,
+  VARIANT_NONE,
 } from "./config.ts";
 import type { SessionMeta } from "./sessions.ts";
 import type { Sess } from "./scan.ts";
@@ -19,15 +22,15 @@ import {
   topVariant,
   unitKey,
 } from "./util.ts";
-import { VARIANT_NONE } from "./config.ts";
 
 export type GitCommit = {
   h: string;
   at: number;
   an: string;
+  ae: string;
+  files: Set<string>;
   ins: number;
   dele: number;
-  files: Set<string>;
 };
 
 const RENAME_BRACE = /^(.*)\{(.*) => (.*)\}(.*)$/;
@@ -42,7 +45,7 @@ export function gitCommits(repo: string): GitCommit[] {
       "--all",
       "--since=2026-01-01",
       "--no-merges",
-      "--format=%x1e%H|%at|%an",
+      "--format=%x1e%H|%at|%an|%ae",
       "--numstat",
     ],
     { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
@@ -57,13 +60,16 @@ export function gitCommits(repo: string): GitCommit[] {
     const head = lines[0]!;
     const i1 = head.indexOf("|");
     const i2 = head.indexOf("|", i1 + 1);
+    const i3 = head.indexOf("|", i2 + 1);
     const h = head.slice(0, i1);
     const at = head.slice(i1 + 1, i2);
-    const an = head.slice(i2 + 1);
+    const an = i3 >= 0 ? head.slice(i2 + 1, i3) : head.slice(i2 + 1);
+    const ae = i3 >= 0 ? head.slice(i3 + 1) : "";
     const c: GitCommit = {
       h: h!,
       at: Number(at),
       an: an ?? "",
+      ae: ae ?? "",
       ins: 0,
       dele: 0,
       files: new Set(),
@@ -94,8 +100,112 @@ function isGitRepo(w: string): boolean {
   );
 }
 
+function gitConfigGet(args: string[]): string {
+  const r = spawnSync("git", args, { encoding: "utf8" });
+  if (r.status !== 0) return "";
+  return (r.stdout ?? "").trim();
+}
+
+function identityOf(c: { an: string; ae: string }): string {
+  const ae = c.ae.trim().toLowerCase();
+  if (ae) return ae;
+  return c.an.trim().toLowerCase();
+}
+
+function addSeed(
+  ids: Set<string>,
+  names: Map<string, string>,
+  raw: string,
+  display?: string,
+): void {
+  const id = raw.trim().toLowerCase();
+  if (!id) return;
+  ids.add(id);
+  const name = (display ?? raw).trim();
+  if (name && !names.has(id)) names.set(id, name);
+}
+
+function envAuthorSeeds(): string[] {
+  return (process.env.OC_GIT_AUTHORS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function authorSeeds(repos: string[]): {
+  ids: Set<string>;
+  names: Map<string, string>;
+} {
+  const ids = new Set<string>();
+  const names = new Map<string, string>();
+  const globalEmail = gitConfigGet([
+    "config",
+    "--global",
+    "--get",
+    "user.email",
+  ]);
+  const globalName = gitConfigGet(["config", "--global", "--get", "user.name"]);
+  addSeed(ids, names, globalEmail, globalName || globalEmail);
+  addSeed(ids, names, globalName, globalName);
+  for (const repo of repos) {
+    const email = gitConfigGet([
+      "-C",
+      repo,
+      "config",
+      "--local",
+      "--get",
+      "user.email",
+    ]);
+    const name = gitConfigGet([
+      "-C",
+      repo,
+      "config",
+      "--local",
+      "--get",
+      "user.name",
+    ]);
+    addSeed(ids, names, email, name || email);
+    addSeed(ids, names, name, name);
+  }
+  for (const s of envAuthorSeeds()) addSeed(ids, names, s);
+  return { ids, names };
+}
+
+function devRoot(): string {
+  return process.env.OC_DEV_ROOT ?? DEV_ROOT;
+}
+
 type Ev = { ts: number; unit: string; ms: number };
 type Ed = { ts: number; unit: string; f: string };
+
+function overlapUnits(
+  c: GitCommit,
+  ed: Ed[],
+  ets: number[],
+  lo: number,
+  hi: number,
+): Map<string, Set<string>> {
+  const touched = new Map<string, Set<string>>();
+  for (const e of ed.slice(bisectLeft(ets, lo), bisectRight(ets, hi))) {
+    if (c.files.has(e.f)) {
+      let fs = touched.get(e.unit);
+      if (!fs) {
+        fs = new Set();
+        touched.set(e.unit, fs);
+      }
+      fs.add(e.f);
+    }
+  }
+  return touched;
+}
+
+export type AuthorInfo = {
+  id: string;
+  name: string;
+  commits: number;
+  hits: number;
+  seed: boolean;
+};
 
 export type CommitData = {
   models: string[];
@@ -107,6 +217,7 @@ export type CommitData = {
   repos: number;
   latest: number;
   basis: Record<string, number>;
+  authors: AuthorInfo[];
 };
 
 export function attributeCommits(
@@ -164,11 +275,94 @@ export function attributeCommits(
     );
   }
 
+  const root = devRoot();
   const repoSet = new Set<string>();
   for (const m of meta.values()) {
-    if (m.wt.startsWith(DEV_ROOT + "/") && isGitRepo(m.wt)) repoSet.add(m.wt);
+    if (m.wt.startsWith(root + "/") && isGitRepo(m.wt)) repoSet.add(m.wt);
   }
   const repos = [...repoSet].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+  type RepoLog = {
+    repo: string;
+    all: GitCommit[];
+    ed: Ed[];
+    ets: number[];
+    ev: Ev[];
+    ts: number[];
+  };
+  const logs: RepoLog[] = [];
+  for (const repo of repos) {
+    const all = gitCommits(repo)
+      .filter((c) => c.at >= since)
+      .sort((a, b) => a.at - b.at);
+    const ev = WT.get(repo) ?? [];
+    const ed = ED.get(repo) ?? [];
+    logs.push({
+      repo,
+      all,
+      ed,
+      ets: ed.map((e) => e.ts),
+      ev,
+      ts: ev.map((e) => e.ts),
+    });
+  }
+
+  const seeds = authorSeeds(repos);
+  const stats = new Map<
+    string,
+    { name: string; commits: number; hits: number }
+  >();
+  const seenLearn = new Set<string>();
+  for (const { all, ed, ets } of logs) {
+    for (const c of all) {
+      if (seenLearn.has(c.h)) continue;
+      seenLearn.add(c.h);
+      const id = identityOf(c);
+      if (!id) continue;
+      let st = stats.get(id);
+      if (!st) {
+        st = { name: c.an || id, commits: 0, hits: 0 };
+        stats.set(id, st);
+      }
+      st.commits += 1;
+      const lo = c.at - AUTHOR_LEARN_WINDOW_S;
+      const hi = c.at + COMMIT_GRACE_S;
+      if (overlapUnits(c, ed, ets, lo, hi).size > 0) st.hits += 1;
+    }
+  }
+  for (const id of seeds.ids) {
+    if (stats.has(id)) continue;
+    stats.set(id, { name: seeds.names.get(id) ?? id, commits: 0, hits: 0 });
+  }
+  const learned = new Set<string>();
+  for (const [id, st] of stats) {
+    if (seeds.ids.has(id)) {
+      learned.add(id);
+      continue;
+    }
+    if (
+      st.hits >= AUTHOR_MIN_HITS &&
+      st.hits / Math.max(st.commits, 1) >= AUTHOR_MIN_SHARE
+    ) {
+      learned.add(id);
+    }
+  }
+  const authors: AuthorInfo[] = [...learned]
+    .map((id) => {
+      const st = stats.get(id)!;
+      return {
+        id,
+        name: st.name,
+        commits: st.commits,
+        hits: st.hits,
+        seed: seeds.ids.has(id),
+      };
+    })
+    .filter((a) => a.commits > 0)
+    .sort(
+      (a, b) =>
+        b.commits - a.commits || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    );
 
   const models: string[] = [];
   const provs: string[] = [];
@@ -192,25 +386,20 @@ export function attributeCommits(
   let total = 0;
   const basis = new Counter<string>();
   const shipped = new Map<string, number[]>();
-  // Attributable commit timestamps per scanned repo (author + since filters,
-  // before the cross-repo hash dedup): the ship-judged gate checks whether a
-  // cycle's window held any commit its edits could have landed in.
+  // Attributable commit timestamps per scanned repo (learned-identity +
+  // since filters, before the cross-repo hash dedup): the ship-judged gate
+  // checks whether a cycle's window held any commit its edits could have
+  // landed in.
   const repoCommits = new Map<string, number[]>();
 
-  for (const repo of repos) {
-    const mine = gitCommits(repo)
-      .filter((c) => GIT_AUTHORS.has(c.an) && c.at >= since)
-      .sort((a, b) => a.at - b.at);
+  for (const { repo, all, ed, ets, ev, ts } of logs) {
+    const mine = all.filter((c) => learned.has(identityOf(c)));
     repoCommits.set(
       repo,
       mine.map((c) => c.at),
     );
     const cs = mine.filter((c) => !seen.has(c.h));
     for (const c of cs) seen.add(c.h);
-    const ev = WT.get(repo) ?? [];
-    const ed = ED.get(repo) ?? [];
-    const ts = ev.map((e) => e.ts);
-    const ets = ed.map((e) => e.ts);
     let prev: number | null = null;
     for (const c of cs) {
       total += 1;
@@ -225,17 +414,7 @@ export function attributeCommits(
       for (const e of ev.slice(bisectLeft(ts, lo), bisectRight(ts, hi))) {
         mins.add(e.unit, e.ms);
       }
-      const touched = new Map<string, Set<string>>();
-      for (const e of ed.slice(bisectLeft(ets, lo), bisectRight(ets, hi))) {
-        if (c.files.has(e.f)) {
-          let fs = touched.get(e.unit);
-          if (!fs) {
-            fs = new Set();
-            touched.set(e.unit, fs);
-          }
-          fs.add(e.f);
-        }
-      }
+      const touched = overlapUnits(c, ed, ets, lo, hi);
       let weights: Map<string, number>;
       let how: string;
       if (touched.size > 0) {
@@ -361,6 +540,7 @@ export function attributeCommits(
       repos: repos.length,
       latest,
       basis: basisObj,
+      authors,
     },
     shipped,
     { repos, commits: repoCommits },

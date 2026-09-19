@@ -955,6 +955,7 @@ function run(db: Database): Record<string, unknown> {
       top_pct: LB[0]![4],
       top_sessions: LB[0]![1],
       repos: CM.repos,
+      authors: (CM.authors ?? []).map((a) => a.name),
       lines_cutoff: LINES_CUTOFF,
       heartbeat_cap_min: Math.floor(HEARTBEAT_CAP_MS / 60000),
       ship_days: SHIP_DAYS,
@@ -1035,6 +1036,7 @@ export function extractToFile(out: string): string {
     total: number;
     repos: number;
     basis: Record<string, number>;
+    authors?: { name: string }[];
   };
   const b = CM.basis;
   const ledger = data.LEDGER as {
@@ -1043,9 +1045,11 @@ export function extractToFile(out: string): string {
     last: number | null;
   };
   const last = ledger.last ? dayOf(ledger.last) : "never";
+  const who = (CM.authors ?? []).map((a) => a.name).filter(Boolean);
+  const asWho = who.length ? ` as ${who.join(", ")}` : "";
   const summary =
     `${out}: ${mt.start} → ${mt.end}, ${mt.sessions} sessions in ${mt.cycles} cycles, ${Number(mt.messages).toLocaleString("en-US")} msgs, ${mt.total_hr} h, ` +
-    `${CM.total} commits in ${CM.repos} repos — by files ${b.files ?? 0}, by window ${b.window ?? 0}, ` +
+    `${CM.total} commits in ${CM.repos} repos${asWho} — by files ${b.files ?? 0}, by window ${b.window ?? 0}, ` +
     `advised only ${b.advised ?? 0}, manual ${b.manual ?? 0} · edit paths for ${mt.sessions_with_paths}/${mt.sessions_editing} editing sessions` +
     ` · ledger: ${ledger.lines} edits in ${ledger.sessions} sessions, last ${last}` +
     `${ledger.lines ? "" : " (run make install-plugin, then restart opencode)"} · ${Math.round((Date.now() - t0) / 1000)}s`;
