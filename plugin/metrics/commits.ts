@@ -5,11 +5,11 @@ import {
   AUTHOR_MIN_SHARE,
   COMMIT_GRACE_S,
   COMMIT_WINDOW_H,
-  DEV_ROOT,
   VARIANT_NONE,
 } from "./config.ts";
 import type { SessionMeta } from "./sessions.ts";
 import type { Sess } from "./scan.ts";
+import { RepoCatalog } from "./repositories.ts";
 import {
   bisectLeft,
   bisectRight,
@@ -92,14 +92,6 @@ export function gitCommits(repo: string): GitCommit[] {
   return cs;
 }
 
-function isGitRepo(w: string): boolean {
-  return (
-    spawnSync("git", ["-C", w, "rev-parse", "--git-dir"], {
-      encoding: "utf8",
-    }).status === 0
-  );
-}
-
 function gitConfigGet(args: string[]): string {
   const r = spawnSync("git", args, { encoding: "utf8" });
   if (r.status !== 0) return "";
@@ -171,10 +163,6 @@ function authorSeeds(repos: string[]): {
   return { ids, names };
 }
 
-function devRoot(): string {
-  return process.env.OC_DEV_ROOT ?? DEV_ROOT;
-}
-
 type Ev = { ts: number; unit: string; ms: number };
 type Ed = { ts: number; unit: string; f: string };
 
@@ -224,34 +212,48 @@ export function attributeCommits(
   S: Map<string, Sess>,
   meta: Map<string, SessionMeta>,
   startDay: string,
-  editsCyc: Map<string, [number, string][]>,
+  editsCyc: Map<string, [number, string, string][]>,
+  catalog?: RepoCatalog,
 ): [
   CommitData,
   Map<string, number[]>,
   { repos: string[]; commits: Map<string, number[]> },
 ] {
+  const cat = catalog ?? new RepoCatalog();
+  if (!catalog) {
+    for (const m of meta.values()) {
+      cat.probe(m.dir);
+      cat.probe(m.wt);
+    }
+  }
   const since = isoMs(startDay) / 1000;
   const WT = new Map<string, Ev[]>();
   const ED = new Map<string, Ed[]>();
   for (const [sid, s] of S) {
     if (meta.has(sid) && s.mp.size > 0) {
-      const wt = meta.get(sid)!.wt;
+      const repoKey = meta.get(sid)!.attrRepo;
       s.cyc.forEach((cy, ci) => {
         const unit = unitKey(sid, ci);
-        let wtl = WT.get(wt);
-        if (!wtl) {
-          wtl = [];
-          WT.set(wt, wtl);
+        if (repoKey) {
+          let wtl = WT.get(repoKey);
+          if (!wtl) {
+            wtl = [];
+            WT.set(repoKey, wtl);
+          }
+          for (const [ts, ms] of cy.ev) wtl.push({ ts, unit, ms });
         }
-        for (const [ts, ms] of cy.ev) wtl.push({ ts, unit, ms });
         const evs = editsCyc.get(unit);
         if (evs) {
-          let edl = ED.get(wt);
-          if (!edl) {
-            edl = [];
-            ED.set(wt, edl);
+          for (const [ts, f, repo] of evs) {
+            const ent = cat.byCommon.get(repo) ?? cat.probe(repo);
+            if (!ent?.eligible) continue;
+            let edl = ED.get(ent.common);
+            if (!edl) {
+              edl = [];
+              ED.set(ent.common, edl);
+            }
+            edl.push({ ts, unit, f });
           }
-          for (const [ts, f] of evs) edl.push({ ts, unit, f });
         }
       });
     }
@@ -275,12 +277,8 @@ export function attributeCommits(
     );
   }
 
-  const root = devRoot();
-  const repoSet = new Set<string>();
-  for (const m of meta.values()) {
-    if (m.wt.startsWith(root + "/") && isGitRepo(m.wt)) repoSet.add(m.wt);
-  }
-  const repos = [...repoSet].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const entries = cat.eligibleRepos();
+  const repos = entries.map((e) => e.readFrom);
 
   type RepoLog = {
     repo: string;
@@ -291,14 +289,14 @@ export function attributeCommits(
     ts: number[];
   };
   const logs: RepoLog[] = [];
-  for (const repo of repos) {
-    const all = gitCommits(repo)
+  for (const ent of entries) {
+    const all = gitCommits(ent.readFrom)
       .filter((c) => c.at >= since)
       .sort((a, b) => a.at - b.at);
-    const ev = WT.get(repo) ?? [];
-    const ed = ED.get(repo) ?? [];
+    const ev = WT.get(ent.common) ?? [];
+    const ed = ED.get(ent.common) ?? [];
     logs.push({
-      repo,
+      repo: ent.common,
       all,
       ed,
       ets: ed.map((e) => e.ts),
@@ -398,128 +396,171 @@ export function attributeCommits(
       repo,
       mine.map((c) => c.at),
     );
-    const cs = mine.filter((c) => !seen.has(c.h));
+    const cs = mine
+      .filter((c) => !seen.has(c.h))
+      .sort((a, b) => a.at - b.at || (a.h < b.h ? -1 : 1));
     for (const c of cs) seen.add(c.h);
-    let prev: number | null = null;
-    for (const c of cs) {
-      total += 1;
-      const lo = Math.max(
-        prev ?? c.at - 6 * 3600,
-        c.at - COMMIT_WINDOW_H * 3600,
-      );
-      const hi = c.at + COMMIT_GRACE_S;
-      prev = c.at;
-      const lines = c.ins + c.dele;
-      const mins = new Counter<string>();
-      for (const e of ev.slice(bisectLeft(ts, lo), bisectRight(ts, hi))) {
-        mins.add(e.unit, e.ms);
+    type Pending = Ed & { used: boolean };
+    const pending = new Map<string, Pending[]>();
+    for (const e of ed) {
+      const p: Pending = { ts: e.ts, unit: e.unit, f: e.f, used: false };
+      let list = pending.get(e.f);
+      if (!list) {
+        list = [];
+        pending.set(e.f, list);
       }
-      const touched = overlapUnits(c, ed, ets, lo, hi);
-      let weights: Map<string, number>;
-      let how: string;
-      if (touched.size > 0) {
-        weights = new Map();
-        for (const [unit, fs] of touched) weights.set(unit, fs.size);
-        how = "files";
-      } else {
-        weights = new Map();
+      list.push(p);
+    }
+    for (const list of pending.values()) {
+      list.sort((a, b) => a.ts - b.ts || (a.unit < b.unit ? -1 : 1));
+    }
+    let i = 0;
+    let prevBatch: number | null = null;
+    while (i < cs.length) {
+      const at = cs[i]!.at;
+      const batch: GitCommit[] = [];
+      while (i < cs.length && cs[i]!.at === at) batch.push(cs[i++]!);
+      const fileLo = at - COMMIT_WINDOW_H * 3600;
+      const fileHi = at + COMMIT_GRACE_S;
+      const timeLo = Math.max(
+        prevBatch ?? at - 6 * 3600,
+        at - COMMIT_WINDOW_H * 3600,
+      );
+      const claimed: Pending[] = [];
+      for (const c of batch) {
+        total += 1;
+        const lines = c.ins + c.dele;
+        const mins = new Counter<string>();
+        for (const e of ev.slice(
+          bisectLeft(ts, timeLo),
+          bisectRight(ts, fileHi),
+        )) {
+          mins.add(e.unit, e.ms);
+        }
+        const touched = new Map<string, Set<string>>();
+        for (const f of c.files) {
+          const list = pending.get(f);
+          if (!list) continue;
+          for (const e of list) {
+            if (e.used) continue;
+            if (e.ts < fileLo || e.ts > fileHi) continue;
+            let fs = touched.get(e.unit);
+            if (!fs) {
+              fs = new Set();
+              touched.set(e.unit, fs);
+            }
+            fs.add(f);
+            claimed.push(e);
+          }
+        }
+        let weights: Map<string, number>;
+        let how: string;
+        if (touched.size > 0) {
+          weights = new Map();
+          for (const [unit, fs] of touched) weights.set(unit, fs.size);
+          how = "files";
+        } else {
+          weights = new Map();
+          for (const [unit, ms] of mins.entries()) {
+            const [sid, ci] = splitUnit(unit);
+            const cy = S.get(sid)!.cyc[ci]!;
+            if (cy.edits > 0 && !editsCyc.has(unit)) weights.set(unit, ms);
+          }
+          how = "window";
+        }
+        const tot = sumMap(weights);
+        if (!tot) {
+          basis.add(mins.size ? "advised" : "manual");
+          manual.push([c.at, lines, mins.size ? 1 : 0]);
+          continue;
+        }
+        basis.add(how);
+        const ent: unknown[] = [];
+        for (const [unit, w] of weights) {
+          const [sid, ci] = splitUnit(unit);
+          const share = w / tot;
+          const ms = mins.get(unit);
+          const cy = S.get(sid)!.cyc[ci]!;
+          const phases: [
+            number,
+            (typeof cy.ph extends Map<number, infer P> ? P : never) | null,
+          ][] = [];
+          for (const [role, ph] of cy.ph) {
+            if (ph.mp.size > 0 && ph.ms > 0) phases.push([role, ph]);
+          }
+          const phaseList =
+            phases.length > 0
+              ? phases
+              : ([[roleOf(meta.get(sid)!.agent), null]] as typeof phases);
+          for (const [role, ph] of phaseList) {
+            let model: string;
+            let prov: string;
+            let variant: string;
+            let frac: number;
+            if (ph === null) {
+              const src = cy.mp.size ? cy.mp : S.get(sid)!.mp;
+              const pair = topPair(src)!;
+              model = pair[0];
+              prov = pair[1];
+              variant = topVariant(src, model, prov) ?? VARIANT_NONE;
+              frac = 1.0;
+            } else {
+              const pair = topPair(ph.mp)!;
+              model = pair[0];
+              prov = pair[1];
+              variant = topVariant(ph.mp, model, prov) ?? VARIANT_NONE;
+              frac = ph.ms / Math.max(cy.ms, 1);
+            }
+            ent.push([
+              idx(models, mi, model),
+              idx(provs, pi, prov),
+              role,
+              pyRound(share * frac, 4),
+              pyRound(((cy.u * ms) / Math.max(cy.ms, 1)) * frac, 3),
+              pyRound((ms / 3.6e6) * frac, 3),
+              0,
+              idx(variants, vi, variant),
+            ]);
+          }
+          if (how === "files") {
+            let sh = shipped.get(unit);
+            if (!sh) {
+              sh = [];
+              shipped.set(unit, sh);
+            }
+            sh.push(c.at);
+          }
+        }
         for (const [unit, ms] of mins.entries()) {
+          if (weights.has(unit)) continue;
           const [sid, ci] = splitUnit(unit);
           const cy = S.get(sid)!.cyc[ci]!;
-          if (cy.edits > 0 && !editsCyc.has(unit)) weights.set(unit, ms);
-        }
-        how = "window";
-      }
-      const tot = sumMap(weights);
-      if (!tot) {
-        basis.add(mins.size ? "advised" : "manual");
-        manual.push([c.at, lines, mins.size ? 1 : 0]);
-        continue;
-      }
-      basis.add(how);
-      const ent: unknown[] = [];
-      for (const [unit, w] of weights) {
-        const [sid, ci] = splitUnit(unit);
-        const share = w / tot;
-        const ms = mins.get(unit);
-        const cy = S.get(sid)!.cyc[ci]!;
-        const phases: [
-          number,
-          (typeof cy.ph extends Map<number, infer P> ? P : never) | null,
-        ][] = [];
-        for (const [role, ph] of cy.ph) {
-          if (ph.mp.size > 0 && ph.ms > 0) phases.push([role, ph]);
-        }
-        const phaseList =
-          phases.length > 0
-            ? phases
-            : ([[roleOf(meta.get(sid)!.agent), null]] as typeof phases);
-        for (const [role, ph] of phaseList) {
-          let model: string;
-          let prov: string;
-          let variant: string;
-          let frac: number;
-          if (ph === null) {
-            const src = cy.mp.size ? cy.mp : S.get(sid)!.mp;
-            const pair = topPair(src)!;
-            model = pair[0];
-            prov = pair[1];
-            variant = topVariant(src, model, prov) ?? VARIANT_NONE;
-            frac = 1.0;
-          } else {
-            const pair = topPair(ph.mp)!;
-            model = pair[0];
-            prov = pair[1];
-            variant = topVariant(ph.mp, model, prov) ?? VARIANT_NONE;
-            frac = ph.ms / Math.max(cy.ms, 1);
+          const ph = cy.ph.get(1);
+          if (ph && ph.mp.size > 0 && ph.ms > 0) {
+            const [model, prov] = topPair(ph.mp)!;
+            const frac = ph.ms / Math.max(cy.ms, 1);
+            ent.push([
+              idx(models, mi, model),
+              idx(provs, pi, prov),
+              1,
+              0.0,
+              pyRound(((cy.u * ms) / Math.max(cy.ms, 1)) * frac, 3),
+              pyRound((ms / 3.6e6) * frac, 3),
+              1,
+              idx(variants, vi, topVariant(ph.mp, model, prov) ?? VARIANT_NONE),
+            ]);
           }
-          ent.push([
-            idx(models, mi, model),
-            idx(provs, pi, prov),
-            role,
-            pyRound(share * frac, 4),
-            pyRound(((cy.u * ms) / Math.max(cy.ms, 1)) * frac, 3),
-            pyRound((ms / 3.6e6) * frac, 3),
-            0,
-            idx(variants, vi, variant),
-          ]);
         }
-        if (how === "files") {
-          let sh = shipped.get(unit);
-          if (!sh) {
-            sh = [];
-            shipped.set(unit, sh);
-          }
-          sh.push(c.at);
-        }
+        recs.push([
+          lines,
+          pyRound(sum(mins.values()) / 3.6e6, 3),
+          ent,
+          c.at,
+          how,
+        ]);
       }
-      for (const [unit, ms] of mins.entries()) {
-        if (weights.has(unit)) continue;
-        const [sid, ci] = splitUnit(unit);
-        const cy = S.get(sid)!.cyc[ci]!;
-        const ph = cy.ph.get(1);
-        if (ph && ph.mp.size > 0 && ph.ms > 0) {
-          const [model, prov] = topPair(ph.mp)!;
-          const frac = ph.ms / Math.max(cy.ms, 1);
-          ent.push([
-            idx(models, mi, model),
-            idx(provs, pi, prov),
-            1,
-            0.0,
-            pyRound(((cy.u * ms) / Math.max(cy.ms, 1)) * frac, 3),
-            pyRound((ms / 3.6e6) * frac, 3),
-            1,
-            idx(variants, vi, topVariant(ph.mp, model, prov) ?? VARIANT_NONE),
-          ]);
-        }
-      }
-      recs.push([
-        lines,
-        pyRound(sum(mins.values()) / 3.6e6, 3),
-        ent,
-        c.at,
-        how,
-      ]);
+      for (const e of claimed) e.used = true;
+      prevBatch = at;
     }
   }
   const latest = Math.max(

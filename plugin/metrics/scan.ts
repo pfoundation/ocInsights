@@ -10,8 +10,9 @@ import {
   VARIANT_NONE,
   VERIFY_RE,
 } from "./config.ts";
-import { canon, Counter, dayOf, pairKey, relFile, roleOf } from "./util.ts";
+import { canon, Counter, dayOf, pairKey, roleOf } from "./util.ts";
 import type { SessionMeta } from "./sessions.ts";
+import { RepoCatalog } from "./repositories.ts";
 
 export type Phase = {
   mp: Counter<string>;
@@ -36,7 +37,7 @@ export type Cycle = Phase & {
   first: number;
   last: number;
   ev: [number, number][];
-  edit_ev: [number, string][];
+  edit_ev: [number, string, string][];
   has_build: boolean;
   ph: Map<number, Phase>;
   last_edit: number | null;
@@ -61,7 +62,7 @@ export type Sess = {
   abort: number;
   ver: number;
   commit: number;
-  edit_ev: [number, string][];
+  edit_ev: [number, string, string][];
   first: number | null;
   comp: number;
   day0: string | null;
@@ -243,6 +244,7 @@ export function scanMessages(
   db: Database,
   meta: Map<string, SessionMeta>,
   winStartMs: number,
+  catalog = new RepoCatalog(),
 ): ScanResult {
   const S = new Map<string, Sess>();
   const day_wt_ms = new Map<string, Counter<string>>();
@@ -496,10 +498,10 @@ export function scanMessages(
           ph.files.add(f);
           cy.files.add(f);
           cyph.files.add(f);
-          const rf = relFile(f, m.dir);
-          if (rf) {
-            s.edit_ev.push([tc / 1000, rf]);
-            cy.edit_ev.push([tc / 1000, rf]);
+          const got = catalog.resolveEdit(f, m.dir);
+          if (got) {
+            s.edit_ev.push([tc / 1000, got.rel, got.repo]);
+            cy.edit_ev.push([tc / 1000, got.rel, got.repo]);
           }
         }
       } else if (name === "read") {

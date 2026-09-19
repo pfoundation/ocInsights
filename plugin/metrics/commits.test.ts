@@ -50,6 +50,15 @@ function commitFile(
   return Number(at.stdout.trim());
 }
 
+function commonDir(repo: string): string {
+  const r = spawnSync(
+    "git",
+    ["-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+    { encoding: "utf8" },
+  );
+  return r.stdout.trim();
+}
+
 function stubSess(wt: string): {
   S: Map<string, Sess>;
   meta: Map<string, SessionMeta>;
@@ -80,7 +89,7 @@ function stubSess(wt: string): {
     first: 0,
     last: 0,
     ev: [] as [number, number][],
-    edit_ev: [] as [number, string][],
+    edit_ev: [] as [number, string, string][],
     has_build: true,
     ph: new Map([[2, ph]]),
     last_edit: null,
@@ -90,7 +99,7 @@ function stubSess(wt: string): {
     ...ph,
     last: null,
     ev: [] as [number, number][],
-    edit_ev: [] as [number, string][],
+    edit_ev: [] as [number, string, string][],
     first: null,
     comp: 0,
     day0: null,
@@ -122,6 +131,7 @@ function stubSess(wt: string): {
         created: 0,
         dir: wt,
         parent: null,
+        attrRepo: commonDir(wt),
       },
     ],
   ]);
@@ -140,7 +150,7 @@ describe("attributeCommits author learning", () => {
   let seedAt = 0;
   let S: Map<string, Sess>;
   let meta: Map<string, SessionMeta>;
-  let editsCyc: Map<string, [number, string][]>;
+  let editsCyc: Map<string, [number, string, string][]>;
 
   beforeAll(() => {
     delete process.env.OC_GIT_AUTHORS;
@@ -189,13 +199,13 @@ describe("attributeCommits author learning", () => {
     const stub = stubSess(repo);
     S = stub.S;
     meta = stub.meta;
-    const edits: [number, string][] = [];
+    const edits: [number, string, string][] = [];
     for (const at of [...youAt, ...botAt, strangerHit]) {
-      edits.push([at - 60, "a.txt"]);
+      edits.push([at - 60, "a.txt", repo]);
     }
     // 10 min before each slow commit — inside the 72 h attribution
     // window, outside the 5 min learning window.
-    for (const at of slowAt) edits.push([at - 600, "d.txt"]);
+    for (const at of slowAt) edits.push([at - 600, "d.txt", repo]);
     editsCyc = new Map([[unitKey("ses_test", 0), edits]]);
   });
 
@@ -236,7 +246,7 @@ describe("attributeCommits author learning", () => {
     const recAt = new Set(CM.recs.map((r) => (r as number[])[3]));
     expect(recAt.has(strangerHit)).toBe(false);
     for (const at of [...youAt, ...botAt]) expect(recAt.has(at)).toBe(true);
-    const ts = repoInfo.commits.get(repo) ?? [];
+    const ts = repoInfo.commits.get(commonDir(repo)) ?? [];
     expect(ts).not.toContain(strangerHit);
     for (const at of strangerRest) expect(ts).not.toContain(at);
     expect(ts).toContain(seedAt);
@@ -259,11 +269,35 @@ describe("attributeCommits author learning", () => {
       expect(CM.total).toBe(13);
       const recAt = new Set(CM.recs.map((r) => (r as number[])[3]));
       expect(recAt.has(strangerHit)).toBe(true);
-      const ts = repoInfo.commits.get(repo) ?? [];
+      const ts = repoInfo.commits.get(commonDir(repo)) ?? [];
       expect(ts).toContain(strangerHit);
       expect(CM.authors.find((a) => a.id === "stranger@x")?.seed).toBe(true);
     } finally {
       delete process.env.OC_GIT_AUTHORS;
     }
+  });
+
+  test("unrelated earlier commit does not hide same-file edits from a later batch", () => {
+    const otherAt = commitFile(
+      repo,
+      "other.txt",
+      "unrelated",
+      YOU,
+      "2026-07-01T12:00:00Z",
+    );
+    const editTs = otherAt + 180;
+    const batchAt = otherAt + 480;
+    const iso = new Date(batchAt * 1000).toISOString().replace(".000Z", "Z");
+    const a = commitFile(repo, "cg.ts", "one", YOU, iso);
+    const b = commitFile(repo, "cg.ts", "two", YOU, iso);
+    expect(a).toBe(batchAt);
+    expect(b).toBe(batchAt);
+    const unit = unitKey("ses_test", 0);
+    const extra = new Map(editsCyc);
+    extra.set(unit, [...(editsCyc.get(unit) ?? []), [editTs, "cg.ts", repo]]);
+    const [CM] = attributeCommits(S, meta, "2026-01-01", extra);
+    const recAt = CM.recs.filter((r) => (r as unknown[])[4] === "files");
+    const hits = recAt.filter((r) => (r as number[])[3] === batchAt);
+    expect(hits.length).toBeGreaterThanOrEqual(2);
   });
 });

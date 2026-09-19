@@ -12,7 +12,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CONTRIB_URL, REPO_ROOT, SHARE_DIR } from "./config.ts";
-import { HARNESS } from "./metrics/config.ts";
+import { ATTRIBUTION_REVISION, HARNESS } from "./metrics/config.ts";
 import { getData } from "./extract.ts";
 
 export const CONTRIB_SCHEMA = 3;
@@ -467,6 +467,22 @@ export async function runContribute(opts: {
   full?: boolean;
 }): Promise<ContribResult> {
   const data = opts.data ?? (await getData(opts.refresh));
+  const rev = (data.meta as { attribution_revision?: unknown } | undefined)
+    ?.attribution_revision;
+  if (rev !== ATTRIBUTION_REVISION) {
+    return {
+      ok: false,
+      dryRun: opts.dryRun,
+      install: loadContributor().install,
+      rows: 0,
+      changed: 0,
+      sent: 0,
+      dayMin: "",
+      dayMax: "",
+      models: 0,
+      error: `stale attribution revision ${String(rev)}; re-extract`,
+    };
+  }
   const { install } = loadContributor();
   const extractor = await loadExtractor();
   const payload = buildPayload(data, install, extractor);

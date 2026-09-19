@@ -19,6 +19,9 @@ import type { Plugin } from "@opencode-ai/plugin";
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { EDIT_TOOLS, LEDGER_PATH } from "./metrics/config.ts";
+import { RepoCatalog } from "./metrics/repositories.ts";
+
+const ledgerCatalog = new RepoCatalog();
 
 const LEDGER = LEDGER_PATH;
 const PATCH_FILE_RE = /^\*\*\* (?:Add|Update|Delete) File: (.+?)\s*$/gm;
@@ -53,17 +56,26 @@ export async function appendLedgerEdit(e: LedgerEdit): Promise<void> {
   const files = pathsOf(e.tool, e.input);
   if (!files.length) return;
   const ts = Date.now();
-  const lines = files.map((raw) =>
-    JSON.stringify({
+  const lines = files.map((raw) => {
+    const file = isAbsolute(raw) ? raw : resolve(e.directory, raw);
+    const got = ledgerCatalog.resolveEdit(file, e.directory);
+    return JSON.stringify({
       ts,
       session: e.sessionID,
       agent: e.agent,
       call: e.callID,
       dir: e.directory,
-      file: isAbsolute(raw) ? raw : resolve(e.directory, raw),
+      file,
       tool: e.tool,
-    }),
-  );
+      ...(got
+        ? {
+            repo: got.repo,
+            worktree: got.worktree,
+            rel: got.rel,
+          }
+        : {}),
+    });
+  });
   try {
     await ensure();
     await appendFile(LEDGER, lines.join("\n") + "\n");
