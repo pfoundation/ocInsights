@@ -7,9 +7,17 @@ export const DB_PATH =
   process.env.OC_DB ??
   join(homedir(), ".local", "share", "opencode", "opencode.db");
 export const DEV_ROOT = process.env.OC_DEV_ROOT ?? join(homedir(), "dev");
-export const GIT_AUTHORS = new Set(
-  (process.env.OC_GIT_AUTHORS ?? "Jud Saoud,judsd").split(",").filter(Boolean),
-);
+// Additive names or emails (comma-separated) unioned into the learned
+// identity set. Empty by default — identities come from file-overlap plus
+// git config user.email. Read again at call time in commits.ts so tests can
+// set the env after import.
+export const GIT_AUTHOR_SEEDS = (process.env.OC_GIT_AUTHORS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+export const AUTHOR_MIN_HITS = 3; // overlap hits before an identity is learned
+export const AUTHOR_MIN_SHARE = 0.1; // hits/commits floor so a one-off overlap cannot enrol a stranger
+export const AUTHOR_LEARN_WINDOW_S = 300; // pass-1 overlap window (5 min); tighter than attribution so CI / teammate commits on the same file are not hits
 export const WINDOW_DAYS = 90; // daily charts (hours by project, models per day)
 export const HEARTBEAT_CAP_MS = 600_000; // gap between messages credited as active, max
 export const HEARTBEAT_SEED_MS = 60_000; // credit for the first message of a session

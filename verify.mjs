@@ -75,6 +75,7 @@ await click("#pgroup [data-g=family]"); await click("#ogroup [data-g=family]"); 
 await click("#crole [data-r=off]");
 const csum = await page.locator("#csum").innerText();
 check("commit attribution basis reported", /\d+ by files touched, \d+ by time/.test(csum), csum.slice(0, 160));
+check("author identities reported", /\d+ identit/.test(csum), csum.slice(0, 220));
 check("advised-only and manual rows", (await count("#crank .row.man")) === 2);
 await click("#crole [data-r=combo]");
 check("funnel last stage is shipped", (await page.locator("#sfun .fbar i").last().evaluate((e) => e.style.background)).includes("var(--primary)")
