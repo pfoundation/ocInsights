@@ -2,6 +2,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { Database } from "bun:sqlite";
 import {
+  ATTRIBUTION_REVISION,
   BUILD_AGENTS,
   DB_PATH,
   HEARTBEAT_CAP_MS,
@@ -13,6 +14,7 @@ import {
   WINDOW_DAYS,
 } from "./config.ts";
 import { attributeCommits } from "./commits.ts";
+import { RepoCatalog } from "./repositories.ts";
 import { scanMessages, type Sess } from "./scan.ts";
 import { ledgerEdits, loadSessions, partEdits } from "./sessions.ts";
 import {
@@ -49,7 +51,8 @@ function addAgg(g: Record<string, number>, k: string, n: number): void {
 }
 
 function run(db: Database): Record<string, unknown> {
-  const meta = loadSessions(db);
+  const catalog = new RepoCatalog();
+  const meta = loadSessions(db, catalog);
   const range = db
     .query(
       `SELECT MIN(time_created) AS lo, MAX(time_created) AS hi
@@ -65,7 +68,7 @@ function run(db: Database): Record<string, unknown> {
   const win_start_ms = isoMs(win_start);
   const lines_cut = isoMs(LINES_CUTOFF);
 
-  const X = scanMessages(db, meta, win_start_ms);
+  const X = scanMessages(db, meta, win_start_ms, catalog);
   const {
     S,
     day_wt_ms,
@@ -183,40 +186,50 @@ function run(db: Database): Record<string, unknown> {
     DTOK[d] = [pyRound(v[0]), pyRound(v[1], 2), v[2].size];
   }
 
-  const editSets = new Map<string, Map<string, [number, string]>>();
-  const putEdit = (sid: string, ts: number, f: string) => {
+  const editSets = new Map<string, Map<string, [number, string, string]>>();
+  const putEdit = (sid: string, ts: number, f: string, repo: string) => {
     let m = editSets.get(sid);
     if (!m) {
       m = new Map();
       editSets.set(sid, m);
     }
-    m.set(`${ts}\0${f}`, [ts, f]);
+    m.set(`${ts}\0${repo}\0${f}`, [ts, f, repo]);
   };
   for (const [sid, s] of S) {
-    for (const [ts, f] of s.edit_ev) putEdit(sid, ts, f);
+    for (const [ts, f, repo] of s.edit_ev) putEdit(sid, ts, f, repo);
   }
-  const part_src = partEdits(db, meta);
-  const [ledger_src, ledger] = ledgerEdits(meta);
+  const part_src = partEdits(db, meta, catalog);
+  const [ledger_src, ledger] = ledgerEdits(meta, catalog);
   for (const src of [part_src, ledger_src]) {
     for (const [sid, evs] of src) {
-      for (const [ts, f] of evs) putEdit(sid, ts, f);
+      for (const [ts, f, repo] of evs) putEdit(sid, ts, f, repo);
     }
   }
-  const edits = new Map<string, [number, string][]>();
+  const edits = new Map<string, [number, string, string][]>();
   for (const [sid, v] of editSets) {
     if (v.size === 0) continue;
     edits.set(
       sid,
       [...v.values()].sort((a, b) =>
-        a[0] !== b[0] ? a[0] - b[0] : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0,
+        a[0] !== b[0]
+          ? a[0] - b[0]
+          : a[2] !== b[2]
+            ? a[2] < b[2]
+              ? -1
+              : 1
+            : a[1] < b[1]
+              ? -1
+              : a[1] > b[1]
+                ? 1
+                : 0,
       ),
     );
   }
-  const edits_cyc = new Map<string, [number, string][]>();
+  const edits_cyc = new Map<string, [number, string, string][]>();
   for (const [sid, s] of S) {
     if (!s.cyc.length || !edits.has(sid)) continue;
     const firsts = s.cyc.map((cy) => cy.first);
-    for (const [ts, f] of edits.get(sid)!) {
+    for (const [ts, f, repo] of edits.get(sid)!) {
       const ci = Math.min(
         Math.max(bisectRight(firsts, ts) - 1, 0),
         firsts.length - 1,
@@ -227,12 +240,12 @@ function run(db: Database): Record<string, unknown> {
         list = [];
         edits_cyc.set(k, list);
       }
-      list.push([ts, f]);
+      list.push([ts, f, repo]);
     }
   }
   const PSRC: Record<string, [number, number, number, number]> = {};
   for (const [mo, [n, p]] of month_edits) PSRC[mo] = [n, p, 0, 0];
-  const extra: [number, Map<string, [number, string][]>][] = [
+  const extra: [number, Map<string, [number, string, string][]>][] = [
     [2, part_src],
     [3, ledger_src],
   ];
@@ -257,6 +270,7 @@ function run(db: Database): Record<string, unknown> {
     meta,
     start_day,
     edits_cyc,
+    catalog,
   );
 
   const AGG = new Map<string, Record<string, number>>();
@@ -517,26 +531,36 @@ function run(db: Database): Record<string, unknown> {
     const i = bisectRight(ts, hi) - 1;
     return i >= 0 && ts[i]! >= lo;
   };
+  const cycleRepos = (unit: string, fallback: string | null): string[] => {
+    const repos = new Set<string>();
+    for (const ev of edits_cyc.get(unit) ?? []) repos.add(ev[2]);
+    if (fallback) repos.add(fallback);
+    return [...repos];
+  };
   const shipExcl = (
     first: number | null,
-    wt: string,
+    repos: string[],
     tsh: number,
   ): 0 | 1 | 2 => {
     if (tsh || !first) return 0;
     if (first + WIN_S > CM.latest) return 1;
-    const ts = repoInfo.commits.get(wt);
-    if (!ts) return 2;
-    return hasCommitIn(ts, first, first + WIN_S) ? 0 : 2;
+    if (!repos.length) return 2;
+    for (const r of repos) {
+      const ts = repoInfo.commits.get(r);
+      if (ts && hasCommitIn(ts, first, first + WIN_S)) return 0;
+    }
+    return 2;
   };
   const per_cyc_shipe = new Map<string, 0 | 1 | 2>();
   for (const [sid, s] of S) {
     if (!s.cyc.length) continue;
-    const wt = meta.get(sid)!.wt;
+    const fallback = meta.get(sid)!.attrRepo;
     s.cyc.forEach((cy, ci) => {
-      const tsh = cyc_tree.get(unitKey(sid, ci))![4];
+      const unit = unitKey(sid, ci);
+      const tsh = cyc_tree.get(unit)![4];
       per_cyc_shipe.set(
-        unitKey(sid, ci),
-        shipExcl(cy.first || s.first || 0, wt, tsh),
+        unit,
+        shipExcl(cy.first || s.first || 0, cycleRepos(unit, fallback), tsh),
       );
     });
   }
@@ -544,7 +568,11 @@ function run(db: Database): Record<string, unknown> {
   for (const [sid, m] of meta) {
     per_sess_shipe.set(
       sid,
-      shipExcl(S.get(sid)?.first ?? null, m.wt, tree.get(sid)![4]),
+      shipExcl(
+        S.get(sid)?.first ?? null,
+        m.attrRepo ? [m.attrRepo] : [],
+        tree.get(sid)![4],
+      ),
     );
   }
 
@@ -955,6 +983,8 @@ function run(db: Database): Record<string, unknown> {
       top_pct: LB[0]![4],
       top_sessions: LB[0]![1],
       repos: CM.repos,
+      attribution_revision: ATTRIBUTION_REVISION,
+      unresolved_edits: catalog.unresolved,
       authors: (CM.authors ?? []).map((a) => a.name),
       lines_cutoff: LINES_CUTOFF,
       heartbeat_cap_min: Math.floor(HEARTBEAT_CAP_MS / 60000),

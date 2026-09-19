@@ -9,6 +9,7 @@ import {
   EXTRACT_TIMEOUT_MS,
   REPO_ROOT,
 } from "./config.ts";
+import { ATTRIBUTION_REVISION } from "./metrics/config.ts";
 import { log } from "./log.ts";
 
 type Cache = {
@@ -80,6 +81,9 @@ async function loadDisk(): Promise<Cache | null> {
     ]);
     const data = JSON.parse(raw) as Record<string, unknown>;
     if (!data || typeof data !== "object") return null;
+    const rev = (data.meta as { attribution_revision?: unknown } | undefined)
+      ?.attribution_revision;
+    if (rev !== ATTRIBUTION_REVISION) return null;
     return { data, at: st.mtimeMs };
   } catch {
     return null;

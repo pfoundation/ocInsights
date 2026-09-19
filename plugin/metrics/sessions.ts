@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { Database } from "bun:sqlite";
 import { LEDGER_PATH, PART_BACKFILL } from "./config.ts";
-import { relFile } from "./util.ts";
+import { RepoCatalog } from "./repositories.ts";
 
 export type SessionMeta = {
   wt: string;
@@ -19,9 +19,11 @@ export type SessionMeta = {
   created: number;
   dir: string;
   parent: string | null;
+  attrRepo: string | null;
 };
 
-export type EditEv = [number, string];
+/** ts seconds, repo-relative path, git common dir */
+export type EditEv = [number, string, string];
 
 type SessRow = {
   id: string;
@@ -42,7 +44,24 @@ type SessRow = {
   parent: string | null;
 };
 
-export function loadSessions(db: Database): Map<string, SessionMeta> {
+export function loadHistoricalDirs(db: Database, catalog: RepoCatalog): void {
+  for (const table of ["worktree", "project_directory"] as const) {
+    try {
+      const rows = db.query(`SELECT directory AS d FROM ${table}`).all() as {
+        d: string;
+      }[];
+      for (const r of rows) if (r.d) catalog.addHistorical(r.d);
+    } catch {
+      /* table absent */
+    }
+  }
+}
+
+export function loadSessions(
+  db: Database,
+  catalog = new RepoCatalog(),
+): Map<string, SessionMeta> {
+  loadHistoricalDirs(db, catalog);
   const rows = db
     .query(
       `SELECT s.id AS id, p.worktree AS wt,
@@ -64,6 +83,11 @@ export function loadSessions(db: Database): Map<string, SessionMeta> {
     .all() as SessRow[];
   const meta = new Map<string, SessionMeta>();
   for (const r of rows) {
+    catalog.addHistorical(r.dir);
+    catalog.addHistorical(r.wt);
+    catalog.probe(r.dir);
+    catalog.probe(r.wt);
+    const ent = catalog.probe(r.dir) ?? catalog.probe(r.wt);
     meta.set(r.id, {
       wt: r.wt,
       agent: r.agent,
@@ -80,6 +104,7 @@ export function loadSessions(db: Database): Map<string, SessionMeta> {
       created: r.created,
       dir: r.dir,
       parent: r.parent,
+      attrRepo: ent?.eligible ? ent.common : null,
     });
   }
   return meta;
@@ -88,6 +113,7 @@ export function loadSessions(db: Database): Map<string, SessionMeta> {
 export function partEdits(
   db: Database,
   meta: Map<string, SessionMeta>,
+  catalog: RepoCatalog,
 ): Map<string, EditEv[]> {
   const out = new Map<string, EditEv[]>();
   if (!PART_BACKFILL) return out;
@@ -111,14 +137,14 @@ export function partEdits(
       }
       const input = (st.input ?? {}) as Record<string, unknown>;
       const raw = (input.filePath ?? input.path) as string | undefined;
-      const f = relFile(raw, m.dir);
-      if (f) {
+      const got = catalog.resolveEdit(raw, m.dir);
+      if (got) {
         let list = out.get(sid);
         if (!list) {
           list = [];
           out.set(sid, list);
         }
-        list.push([tc / 1000, f]);
+        list.push([tc / 1000, got.rel, got.repo]);
       }
     }
   } catch {
@@ -134,9 +160,12 @@ export type LedgerInfo = {
   sessions: number;
 };
 
+type LedgerResult = [Map<string, EditEv[]>, LedgerInfo];
+
 export function ledgerEdits(
   meta: Map<string, SessionMeta>,
-): [Map<string, EditEv[]>, LedgerInfo] {
+  catalog: RepoCatalog,
+): LedgerResult {
   const out = new Map<string, EditEv[]>();
   const info: LedgerInfo = { lines: 0, first: null, last: null, sessions: 0 };
   if (!existsSync(LEDGER_PATH)) return [out, info];
@@ -163,17 +192,22 @@ export function ledgerEdits(
     sess.add(e.session as string);
     const m = meta.get(e.session as string);
     if (!m) continue;
-    const f = relFile(
+    const got = catalog.resolveEdit(
       e.file as string | undefined,
       (e.dir as string | undefined) || m.dir,
+      {
+        repo: typeof e.repo === "string" ? e.repo : undefined,
+        worktree: typeof e.worktree === "string" ? e.worktree : undefined,
+        rel: typeof e.rel === "string" ? e.rel : undefined,
+      },
     );
-    if (f) {
+    if (got) {
       let list = out.get(e.session as string);
       if (!list) {
         list = [];
         out.set(e.session as string, list);
       }
-      list.push([ts / 1000, f]);
+      list.push([ts / 1000, got.rel, got.repo]);
     }
   }
   info.sessions = sess.size;

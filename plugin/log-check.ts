@@ -467,7 +467,11 @@ function contribFixture(): Record<string, unknown> {
       variant: ["default"],
       ocv: ["1.18"],
     },
-    meta: { generated: "2026-09-07T00:00:00Z", sessions: 1 },
+    meta: {
+      generated: "2026-09-07T00:00:00Z",
+      sessions: 1,
+      attribution_revision: 2,
+    },
   };
 }
 function seedContrib(home: string): void {
