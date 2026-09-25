@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type { Database } from "bun:sqlite";
 import { LEDGER_PATH, PART_BACKFILL } from "./config.ts";
 import { RepoCatalog } from "./repositories.ts";
+import { relFile } from "./util.ts";
 
 export type SessionMeta = {
   wt: string;
@@ -24,6 +25,25 @@ export type SessionMeta = {
 
 /** ts seconds, repo-relative path, git common dir */
 export type EditEv = [number, string, string];
+
+/**
+ * resolved: edits placed in a scanned repo (commit attribution).
+ * recorded: ts seconds of every edit whose path sits under the session
+ * directory, repo or not — the "has paths" judging gate.
+ */
+export type EditSource = {
+  resolved: Map<string, EditEv[]>;
+  recorded: Map<string, number[]>;
+};
+
+function push<T>(m: Map<string, T[]>, k: string, v: T): void {
+  let list = m.get(k);
+  if (!list) {
+    list = [];
+    m.set(k, list);
+  }
+  list.push(v);
+}
 
 type SessRow = {
   id: string;
@@ -114,8 +134,8 @@ export function partEdits(
   db: Database,
   meta: Map<string, SessionMeta>,
   catalog: RepoCatalog,
-): Map<string, EditEv[]> {
-  const out = new Map<string, EditEv[]>();
+): EditSource {
+  const out: EditSource = { resolved: new Map(), recorded: new Map() };
   if (!PART_BACKFILL) return out;
   try {
     const rows = db
@@ -137,15 +157,9 @@ export function partEdits(
       }
       const input = (st.input ?? {}) as Record<string, unknown>;
       const raw = (input.filePath ?? input.path) as string | undefined;
-      const got = catalog.resolveEdit(raw, m.dir);
-      if (got) {
-        let list = out.get(sid);
-        if (!list) {
-          list = [];
-          out.set(sid, list);
-        }
-        list.push([tc / 1000, got.rel, got.repo]);
-      }
+      if (relFile(raw, m.dir)) push(out.recorded, sid, tc / 1000);
+      const got = catalog.resolveEdit(raw, m.dir, { fallback: m.attrRepo });
+      if (got) push(out.resolved, sid, [tc / 1000, got.rel, got.repo]);
     }
   } catch {
     return out;
@@ -160,13 +174,13 @@ export type LedgerInfo = {
   sessions: number;
 };
 
-type LedgerResult = [Map<string, EditEv[]>, LedgerInfo];
+type LedgerResult = [EditSource, LedgerInfo];
 
 export function ledgerEdits(
   meta: Map<string, SessionMeta>,
   catalog: RepoCatalog,
 ): LedgerResult {
-  const out = new Map<string, EditEv[]>();
+  const out: EditSource = { resolved: new Map(), recorded: new Map() };
   const info: LedgerInfo = { lines: 0, first: null, last: null, sessions: 0 };
   if (!existsSync(LEDGER_PATH)) return [out, info];
   const seen = new Set<string>();
@@ -190,25 +204,19 @@ export function ledgerEdits(
     info.first = Math.min(info.first ?? ts, ts);
     info.last = Math.max(info.last ?? 0, ts);
     sess.add(e.session as string);
-    const m = meta.get(e.session as string);
+    const sid = e.session as string;
+    const m = meta.get(sid);
     if (!m) continue;
-    const got = catalog.resolveEdit(
-      e.file as string | undefined,
-      (e.dir as string | undefined) || m.dir,
-      {
-        repo: typeof e.repo === "string" ? e.repo : undefined,
-        worktree: typeof e.worktree === "string" ? e.worktree : undefined,
-        rel: typeof e.rel === "string" ? e.rel : undefined,
-      },
-    );
-    if (got) {
-      let list = out.get(e.session as string);
-      if (!list) {
-        list = [];
-        out.set(e.session as string, list);
-      }
-      list.push([ts / 1000, got.rel, got.repo]);
-    }
+    const file = e.file as string | undefined;
+    const dir = (e.dir as string | undefined) || m.dir;
+    if (relFile(file, dir)) push(out.recorded, sid, ts / 1000);
+    const got = catalog.resolveEdit(file, dir, {
+      repo: typeof e.repo === "string" ? e.repo : undefined,
+      worktree: typeof e.worktree === "string" ? e.worktree : undefined,
+      rel: typeof e.rel === "string" ? e.rel : undefined,
+      fallback: m.attrRepo,
+    });
+    if (got) push(out.resolved, sid, [ts / 1000, got.rel, got.repo]);
   }
   info.sessions = sess.size;
   return [out, info];

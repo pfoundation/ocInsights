@@ -104,6 +104,28 @@ export class RepoCatalog {
   readonly historical = new Set<string>();
   unresolved = 0;
   private probed = new Map<string, string | null>();
+  // git answers per directory; resolveEdit asks once per edit, so without
+  // these an extract spawned ~50k `git rev-parse` processes.
+  private tops = new Map<string, string | null>();
+  private commons = new Map<string, string | null>();
+
+  private topOf(dir: string): string | null {
+    let v = this.tops.get(dir);
+    if (v === undefined) {
+      v = gitTopLevel(dir);
+      this.tops.set(dir, v);
+    }
+    return v;
+  }
+
+  private commonOf(dir: string): string | null {
+    let v = this.commons.get(dir);
+    if (v === undefined) {
+      v = gitCommonDir(dir);
+      this.commons.set(dir, v);
+    }
+    return v;
+  }
 
   addHistorical(dir: string): void {
     if (dir) this.historical.add(absPath(dir));
@@ -131,8 +153,8 @@ export class RepoCatalog {
       this.probed.set(key, null);
       return null;
     }
-    const top = gitTopLevel(start);
-    const common = top ? gitCommonDir(top) : gitCommonDir(start);
+    const top = this.topOf(start);
+    const common = top ? this.commonOf(top) : this.commonOf(start);
     if (!top || !common) {
       this.probed.set(key, null);
       return null;
@@ -172,6 +194,8 @@ export class RepoCatalog {
       repo?: string;
       worktree?: string;
       rel?: string;
+      /** git common dir of the session's project, used when sessionDir no longer exists */
+      fallback?: string | null;
     },
   ): ResolvedEdit | null {
     if (extra?.rel && extra.repo) {
@@ -210,7 +234,7 @@ export class RepoCatalog {
     const hist = longestPrefix(abs, this.historical);
     const live = this.probe(abs);
     const liveTop = live
-      ? (gitTopLevel(existingDir(abs) ?? abs) ?? live.readFrom)
+      ? (this.topOf(existingDir(abs) ?? abs) ?? live.readFrom)
       : null;
     const worktree =
       hist && (!liveTop || hist.length >= liveTop.length) ? hist : liveTop;
@@ -248,6 +272,31 @@ export class RepoCatalog {
           rel,
           readFrom: sess.readFrom,
         };
+      }
+    }
+    // A renamed or removed checkout (v0-dashboard → datastudio, pruned
+    // opencode worktrees): the session directory is gone but its project
+    // still resolves. Paths stay relative to the session directory.
+    if (extra?.fallback) {
+      const dir = absPath(sessionDir);
+      if (!existsSync(dir)) {
+        const ent =
+          this.byCommon.get(absPath(extra.fallback)) ??
+          this.probe(extra.fallback);
+        const rel = relFile(abs, dir);
+        if (
+          ent?.eligible &&
+          rel &&
+          rel !== "." &&
+          !rel.startsWith(".worktrees/")
+        ) {
+          return {
+            repo: ent.common,
+            worktree: dir,
+            rel,
+            readFrom: ent.readFrom,
+          };
+        }
       }
     }
     if (abs.startsWith(devRoot())) this.unresolved += 1;
