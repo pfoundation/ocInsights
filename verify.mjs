@@ -292,6 +292,9 @@ await click('#gwin [data-w="7"]');
 check("7-day overall pool is the all-time pool", (await page.evaluate(() => JSON.stringify(window.__opool))) === poolAll && (await page.locator("#osum").innerText()).includes("against the all-time pool"));
 const o7 = await count("#orank .row"), n7 = await count("#orank [data-thin]");
 check("7-day overall ranks or explains", o7 >= 2 ? n7 === 0 : n7 === 1, `${o7} ranked, ${n7} notes`);
+// windows rank every judged group (no 10-cycle floor): only groups without a score stay dimmed
+const dim7 = await page.locator("#otb tr[data-unr] td:nth-child(4)").allInnerTexts();
+check("7-day ranks every scored group", o7 === (await count("#otb tr")) - dim7.length && dim7.every((t) => t.trim() === "—"), `${o7} ranked, dimmed: ${dim7.join(",")}`);
 await click("#ogroup [data-g=model]");
 const om = await count("#orank .row"), nm = await count("#orank [data-thin]");
 check("7-day model combos rank or explain", om >= 2 ? nm === 0 : nm === 1 && (await page.locator("#orank [data-thin]").innerText()).includes("last 7 days"), `${om} ranked, ${nm} notes`);
