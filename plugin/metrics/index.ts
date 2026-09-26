@@ -201,7 +201,7 @@ function run(db: Database): Record<string, unknown> {
   const part_src = partEdits(db, meta, catalog);
   const [ledger_src, ledger] = ledgerEdits(meta, catalog);
   for (const src of [part_src, ledger_src]) {
-    for (const [sid, evs] of src) {
+    for (const [sid, evs] of src.resolved) {
       for (const [ts, f, repo] of evs) putEdit(sid, ts, f, repo);
     }
   }
@@ -243,15 +243,49 @@ function run(db: Database): Record<string, unknown> {
       list.push([ts, f, repo]);
     }
   }
+  // "Has paths" (the judging gate, `paths`/`tpaths`) means an edit path was
+  // recorded — under the session directory, or anywhere that resolved into a
+  // scanned repo — not that it resolved. Unresolvable trees stay judged; the
+  // ship-judged gate marks them unshippable once their window closes.
+  const recorded = new Map<string, number[]>();
+  const addRecorded = (sid: string, ts: number[]) => {
+    const list = recorded.get(sid);
+    if (list) list.push(...ts);
+    else recorded.set(sid, [...ts]);
+  };
+  for (const [sid, s] of S) {
+    if (s.path_ts.length) addRecorded(sid, s.path_ts);
+  }
+  for (const src of [part_src, ledger_src]) {
+    for (const [sid, ts] of src.recorded) addRecorded(sid, ts);
+  }
+  for (const [sid, evs] of edits)
+    addRecorded(
+      sid,
+      evs.map((e) => e[0]),
+    );
+  const paths_cyc = new Set<string>();
+  for (const [sid, s] of S) {
+    const ts = recorded.get(sid);
+    if (!s.cyc.length || !ts) continue;
+    const firsts = s.cyc.map((cy) => cy.first);
+    for (const t of ts) {
+      const ci = Math.min(
+        Math.max(bisectRight(firsts, t) - 1, 0),
+        firsts.length - 1,
+      );
+      paths_cyc.add(unitKey(sid, ci));
+    }
+  }
   const PSRC: Record<string, [number, number, number, number]> = {};
   for (const [mo, [n, p]] of month_edits) PSRC[mo] = [n, p, 0, 0];
-  const extra: [number, Map<string, [number, string, string][]>][] = [
-    [2, part_src],
-    [3, ledger_src],
+  const extra: [number, Map<string, number[]>][] = [
+    [2, part_src.recorded],
+    [3, ledger_src.recorded],
   ];
   for (const [col, src] of extra) {
     for (const evs of src.values()) {
-      for (const [ts] of evs) {
+      for (const ts of evs) {
         const mo = dayOf(truncMs(ts)).slice(0, 7);
         if (!PSRC[mo]) PSRC[mo] = [0, 0, 0, 0];
         PSRC[mo]![col] += 1;
@@ -261,7 +295,7 @@ function run(db: Database): Record<string, unknown> {
   const PSRC_sorted: Record<string, [number, number, number, number]> = {};
   for (const mo of Object.keys(PSRC).sort()) PSRC_sorted[mo] = PSRC[mo]!;
   const path_cov = [...S].filter(
-    ([sid, s]) => s.edits > 0 && edits.has(sid),
+    ([sid, s]) => s.edits > 0 && recorded.has(sid),
   ).length;
   const editing = [...S.values()].filter((s) => s.edits > 0).length;
 
@@ -284,7 +318,7 @@ function run(db: Database): Record<string, unknown> {
       per_cyc_ship.set(k, [
         shc ? 1 : 0,
         shc ? pyRound((fc - cy.first) / 3600, 2) : -1,
-        cy.edits > 0 && edits_cyc.has(k) ? 1 : 0,
+        cy.edits > 0 && paths_cyc.has(k) ? 1 : 0,
       ]);
     });
   }
@@ -335,7 +369,7 @@ function run(db: Database): Record<string, unknown> {
     addAgg(g, "s_edit", ed && !v && !sh ? 1 : 0);
     addAgg(g, "s_ver", ed && v && !sh ? 1 : 0);
     addAgg(g, "s_commit", ed && sh ? 1 : 0);
-    addAgg(g, "s_paths", ed && edits.has(sid) ? 1 : 0);
+    addAgg(g, "s_paths", ed && recorded.has(sid) ? 1 : 0);
     if (sh) {
       let lag = ship_lag.get(key);
       if (!lag) {
@@ -347,7 +381,7 @@ function run(db: Database): Record<string, unknown> {
     per_sess_ship.set(sid, [
       sh ? 1 : 0,
       sh ? pyRound((first_commit - s.first!) / 3600, 2) : -1,
-      ed && edits.has(sid) ? 1 : 0,
+      ed && recorded.has(sid) ? 1 : 0,
     ]);
   }
   const FLOAT_KEYS = new Set(["hrs", "cost", "lhrs"]);

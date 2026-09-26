@@ -470,7 +470,7 @@ function contribFixture(): Record<string, unknown> {
     meta: {
       generated: "2026-09-07T00:00:00Z",
       sessions: 1,
-      attribution_revision: 2,
+      attribution_revision: 3,
     },
   };
 }

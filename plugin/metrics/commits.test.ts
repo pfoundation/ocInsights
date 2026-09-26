@@ -100,6 +100,7 @@ function stubSess(wt: string): {
     last: null,
     ev: [] as [number, number][],
     edit_ev: [] as [number, string, string][],
+    path_ts: [] as number[],
     first: null,
     comp: 0,
     day0: null,

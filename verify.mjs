@@ -285,6 +285,18 @@ check("overall pool scores 50", (await page.evaluate(() => window.__opoolScore))
 check("overall sensitivity line", /top-3 (stable|sensitive) to ±10 tier weights/.test(osum), osum.slice(0, 220));
 const osumNums = (osum.match(/([\d,]+) judged cycles.*?([\d,]+) ship-judged \((\d+) pending, (\d+) unshippable\)/) || []).slice(1).map((v) => parseInt(v.replace(/,/g, ""), 10));
 check("overall ship-judged arithmetic", osumNums.length === 4 && osumNums[1] + osumNums[2] + osumNums[3] === osumNums[0], osumNums.join("/"));
+// short windows score against the all-time pool, and say so when fewer than two groups qualify
+const poolAll = await page.evaluate(() => JSON.stringify(window.__opool));
+check("all-time overall has no thin-pool note", (await count("#orank [data-thin]")) === 0 && !osum.includes("all-time pool"));
+await click('#gwin [data-w="7"]');
+check("7-day overall pool is the all-time pool", (await page.evaluate(() => JSON.stringify(window.__opool))) === poolAll && (await page.locator("#osum").innerText()).includes("against the all-time pool"));
+const o7 = await count("#orank .row"), n7 = await count("#orank [data-thin]");
+check("7-day overall ranks or explains", o7 >= 2 ? n7 === 0 : n7 === 1, `${o7} ranked, ${n7} notes`);
+await click("#ogroup [data-g=model]");
+const om = await count("#orank .row"), nm = await count("#orank [data-thin]");
+check("7-day model combos rank or explain", om >= 2 ? nm === 0 : nm === 1 && (await page.locator("#orank [data-thin]").innerText()).includes("last 7 days"), `${om} ranked, ${nm} notes`);
+await click("#ogroup [data-g=family]");
+await click("#greset");
 const otiers = await page.locator("#otb tr").evaluateAll((rs) => rs.flatMap((r) => [...r.children].slice(4, 10).map((td) => td.innerText)));
 check("overall tier scores in range", otiers.length > 0 && otiers.every((v) => /^\d+[*]?$/.test(v) && +v.replace("*", "") >= 0 && +v.replace("*", "") <= 100), otiers.slice(0, 8).join(","));
 check("overall imputed tiers marked 50*", otiers.filter((v) => v.includes("*")).every((v) => v === "50*"));

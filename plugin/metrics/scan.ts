@@ -10,7 +10,7 @@ import {
   VARIANT_NONE,
   VERIFY_RE,
 } from "./config.ts";
-import { canon, Counter, dayOf, pairKey, roleOf } from "./util.ts";
+import { canon, Counter, dayOf, pairKey, relFile, roleOf } from "./util.ts";
 import type { SessionMeta } from "./sessions.ts";
 import { RepoCatalog } from "./repositories.ts";
 
@@ -63,6 +63,8 @@ export type Sess = {
   ver: number;
   commit: number;
   edit_ev: [number, string, string][];
+  /** edits with a recorded path under the session dir (repo or not) — the judging gate */
+  path_ts: number[];
   first: number | null;
   comp: number;
   day0: string | null;
@@ -117,6 +119,7 @@ function newSess(): Sess {
     last: null,
     ev: [],
     edit_ev: [],
+    path_ts: [],
     first: null,
     comp: 0,
     day0: null,
@@ -498,7 +501,8 @@ export function scanMessages(
           ph.files.add(f);
           cy.files.add(f);
           cyph.files.add(f);
-          const got = catalog.resolveEdit(f, m.dir);
+          if (relFile(f, m.dir)) s.path_ts.push(tc / 1000);
+          const got = catalog.resolveEdit(f, m.dir, { fallback: m.attrRepo });
           if (got) {
             s.edit_ev.push([tc / 1000, got.rel, got.repo]);
             cy.edit_ev.push([tc / 1000, got.rel, got.repo]);

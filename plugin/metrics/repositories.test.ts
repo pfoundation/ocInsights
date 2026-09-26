@@ -94,6 +94,35 @@ describe("RepoCatalog", () => {
     expect(got?.repo).toBe(cat.probe(main)?.common);
   });
 
+  test("a renamed session directory resolves through its project repo", () => {
+    const gone = join(root, "app-before-rename");
+    const cat = new RepoCatalog();
+    const fallback = cat.probe(main)?.common;
+    cat.addHistorical(gone);
+    const file = join(gone, "src", "page.tsx");
+    expect(cat.resolveEdit(file, gone)).toBeNull();
+    const got = cat.resolveEdit(file, gone, { fallback });
+    expect(got?.repo).toBe(fallback);
+    expect(got?.rel).toBe("src/page.tsx");
+    expect(cat.resolveEdit("src/page.tsx", gone, { fallback })?.rel).toBe(
+      "src/page.tsx",
+    );
+    // the fallback never reaches outside the vanished directory
+    expect(
+      cat.resolveEdit(join(root, "elsewhere.ts"), gone, { fallback }),
+    ).toBeNull();
+  });
+
+  test("the fallback is ignored while the session directory exists", () => {
+    const cat = new RepoCatalog();
+    const other = join(root, "plain-dir");
+    mkdirSync(other, { recursive: true });
+    const fallback = cat.probe(main)?.common;
+    expect(
+      cat.resolveEdit(join(other, "notes.md"), other, { fallback }),
+    ).toBeNull();
+  });
+
   test("outside DEV_ROOT is not eligible", () => {
     const cat = new RepoCatalog();
     process.env.OC_DEV_ROOT = join(root, "empty");
