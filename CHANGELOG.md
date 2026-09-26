@@ -5,7 +5,7 @@
 - Judged cycles are back to every cycle with a recorded edit path: 26.9.1 had quietly narrowed "has paths" to edits that resolve into a live repo under `~/dev`, dropping a quarter of judged cycles (January–April by up to 75%). Edits that resolve nowhere (scratch dirs, removed repos) keep the cycle judged and mark it unshippable once its ship window closes (`ATTRIBUTION_REVISION` 3; re-extract before contributing)
 - Renamed or removed checkouts (`v0-dashboard` → `datastudio`, pruned opencode worktrees) resolve through their project's repo again, so their edits earn file-overlap credit instead of the time fallback
 - Extract is ~5× faster (about 25 s instead of about 2 min): git lookups are cached per directory instead of spawning `git rev-parse` for every edit, so the live page no longer stalls for two minutes when its cache expires
-- Windowed views (90/45/30/7 days) score the turns and overall cards against the all-time pool for the same grouping and session filter, so a week with one qualifying group no longer reads 50 on every axis; the ranking says so when fewer than two groups reach 10 judged cycles and suggests a wider window, family grouping or Role Off
+- Windowed views (90/45/30/7 days) score the turns and overall cards against the all-time pool for the same grouping and session filter, so a week no longer reads 50 on every axis, and they rank every group with a judged cycle instead of requiring 10 (the all-time view keeps 10): the 7-day overall card showed one planner → builder pair out of eight. When fewer than two groups rank, the ranking says so and suggests a wider window, family grouping or Role Off
 
 ## 26.9.1
 
